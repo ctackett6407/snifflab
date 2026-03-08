@@ -34,7 +34,9 @@ THEMES = {
         "muted": "#9CA3AF",
         "accent": "#8B5CF6",
         "border": "#374151",
+        "button_bg": "#111827",
         "button_text": "#F9FAFB",
+        "button_hover_bg": "#8B5CF6",
         "button_hover_text": "#050816",
     },
     "Pink Pretty": {
@@ -44,7 +46,9 @@ THEMES = {
         "muted": "#9D4D7B",
         "accent": "#EC4899",
         "border": "#F9A8D4",
-        "button_text": "#5B2145",
+        "button_bg": "#C0266D",
+        "button_text": "#FFFFFF",
+        "button_hover_bg": "#EC4899",
         "button_hover_text": "#FFFFFF",
     },
     "Monochrome": {
@@ -54,7 +58,9 @@ THEMES = {
         "muted": "#BDBDBD",
         "accent": "#E5E7EB",
         "border": "#444444",
+        "button_bg": "#1F1F1F",
         "button_text": "#F5F5F5",
+        "button_hover_bg": "#E5E7EB",
         "button_hover_text": "#111111",
     },
     "Rainbow Pop": {
@@ -64,7 +70,9 @@ THEMES = {
         "muted": "#CBD5E1",
         "accent": "#22D3EE",
         "border": "#A78BFA",
-        "button_text": "#F8FAFC",
+        "button_bg": "#6D28D9",
+        "button_text": "#FFFFFF",
+        "button_hover_bg": "#22D3EE",
         "button_hover_text": "#0F172A",
     },
 }
@@ -197,8 +205,8 @@ if theme is not None:
         /* =========================
            BUTTONS
            ========================= */
-        div.stButton > button {{
-            background-color: {theme['card']} !important;
+        div.stButton > button {
+            background-color: {theme['button_bg']} !important;
             color: {theme['button_text']} !important;
             border: 1px solid {theme['border']} !important;
             border-radius: 12px !important;
@@ -206,40 +214,43 @@ if theme is not None:
             font-size: 18px !important;
             box-shadow: none !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
-        }}
+        }
 
         div.stButton > button p,
-        div.stButton > button span {{
+        div.stButton > button span,
+        div.stButton > button div {
             color: {theme['button_text']} !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
-        }}
+        }
 
-        div.stButton > button:hover {{
-            background-color: {theme['accent']} !important;
+        div.stButton > button:hover {
+            background-color: {theme['button_hover_bg']} !important;
             color: {theme['button_hover_text']} !important;
-            border-color: {theme['accent']} !important;
+            border-color: {theme['button_hover_bg']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
+        }
 
         div.stButton > button:hover p,
-        div.stButton > button:hover span {{
+        div.stButton > button:hover span,
+        div.stButton > button:hover div {
             color: {theme['button_hover_text']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
+        }
 
-        div.stButton > button[kind="primary"] {{
+        div.stButton > button[kind="primary"] {
             background-color: {theme['accent']} !important;
             color: {theme['button_hover_text']} !important;
             border-color: {theme['accent']} !important;
             font-weight: 700 !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
+        }
 
         div.stButton > button[kind="primary"] p,
-        div.stButton > button[kind="primary"] span {{
+        div.stButton > button[kind="primary"] span,
+        div.stButton > button[kind="primary"] div {
             color: {theme['button_hover_text']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
+        }
 
         /* =========================
            INPUTS / SELECTS
