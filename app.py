@@ -91,6 +91,7 @@ DEFAULTS = {
     "vibe": "Any",
     "profile": "Any",
     "intensity": "Signature",
+    "mixing_style": "Balanced",
 
     # Bulk selection state
     "browse_selected": [],
@@ -374,11 +375,13 @@ def amazon_search_link(query: str) -> str:
 # =========================================================
 # COMBO ENGINE
 # =========================================================
-def combo_score(a, b, vibe, profile, intensity):
+def combo_score(a, b, vibe, profile, intensity, mixing_style):
     """
-    Score a combo based on shared accords, note bridges,
-    complementary pairings, vibe/profile match, and intensity.
+    Score a combo based on shared accords, bridge notes,
+    plausible layering structure, vibe/profile match,
+    intensity, and brand relationship.
     """
+
     accords_a = set(a["accords"])
     accords_b = set(b["accords"])
     notes_a = set([x.lower() for x in a["all_notes"]])
@@ -387,31 +390,70 @@ def combo_score(a, b, vibe, profile, intensity):
     shared_accords = accords_a & accords_b
     shared_notes = notes_a & notes_b
 
-    score = 0
-    score += len(shared_accords) * 3
-    score += len(shared_notes) * 1.5
+    score = 0.0
+
+    # Core structural similarity
+    score += len(shared_accords) * 2.8
+    score += len(shared_notes) * 1.2
 
     combined = " ".join(list(accords_a | accords_b) + list(notes_a | notes_b))
 
-    # Reliable pairing bonuses
-    bonus_pairs = [
-        (["vanilla", "amber"], 2.8),
-        (["coffee", "vanilla"], 2.3),
-        (["cherry", "almond"], 2.5),
-        (["tobacco", "vanilla"], 2.8),
+    # Reliable bridge-note bonuses
+    bridge_pairs = [
+        (["vanilla", "amber"], 2.5),
+        (["coffee", "vanilla"], 2.2),
+        (["cherry", "almond"], 2.3),
+        (["tobacco", "vanilla"], 2.5),
         (["floral", "musk"], 1.8),
-        (["citrus", "fresh"], 1.8),
-        (["woody", "amber"], 2.2),
-        (["gourmand", "sweet"], 2.3),
-        (["rose", "lychee"], 2.2),
-        (["marshmallow", "orange blossom"], 2.2),
-        (["bergamot", "woods"], 1.8),
-        (["marine", "citrus"], 1.7),
+        (["citrus", "fresh"], 1.6),
+        (["woody", "amber"], 2.0),
+        (["gourmand", "sweet"], 2.0),
+        (["rose", "lychee"], 2.0),
+        (["marshmallow", "orange blossom"], 2.0),
+        (["bergamot", "woods"], 1.5),
+        (["marine", "citrus"], 1.4),
     ]
-    for needed, pts in bonus_pairs:
+    for needed, pts in bridge_pairs:
         if all(term in combined for term in needed):
             score += pts
 
+    # Plausibility guardrails:
+    # reward at least one bridge and punish hard clashes with no bridge
+    bridge_count = len(shared_accords) + len(shared_notes)
+
+    if bridge_count == 0:
+        score -= 3.0
+    elif bridge_count == 1:
+        score -= 0.8
+    else:
+        score += 1.0
+
+    # Soft clash penalties
+    # These are not absolute "no" combos, just riskier without bridges
+    risky_pairs = [
+        (["marine", "chocolate"], 1.8),
+        (["marine", "caramel"], 1.5),
+        (["oud", "aquatic"], 1.4),
+        (["citrus", "smoke"], 1.0),
+    ]
+    for needed, penalty in risky_pairs:
+        if all(term in combined for term in needed) and bridge_count < 2:
+            score -= penalty
+
+    # Top/mid/base plausibility
+    # Reward overlap in lower structure because layering settles into base notes
+    base_a = set([x.lower() for x in a["base_list"]])
+    base_b = set([x.lower() for x in b["base_list"]])
+    middle_a = set([x.lower() for x in a["middle_list"]])
+    middle_b = set([x.lower() for x in b["middle_list"]])
+
+    shared_base = base_a & base_b
+    shared_middle = middle_a & middle_b
+
+    score += len(shared_base) * 1.8
+    score += len(shared_middle) * 1.0
+
+    # Vibe matching
     vibe_terms = {
         "Any": [],
         "Sexy": ["amber", "vanilla", "musk", "tobacco", "warm spicy"],
@@ -432,25 +474,53 @@ def combo_score(a, b, vibe, profile, intensity):
 
     for term in vibe_terms.get(vibe, []):
         if term in combined:
-            score += 0.9
+            score += 0.8
 
     for term in profile_terms.get(profile, []):
         if term in combined:
-            score += 1.0
+            score += 0.9
 
     # Intensity shaping
     if intensity == "Easy":
         if len(shared_accords) >= 2:
             score += 1.2
+        if bridge_count < 2:
+            score -= 0.6
+
     elif intensity == "Signature":
-        if len(shared_accords) >= 1 and len(shared_notes) >= 1:
-            score += 1.5
+        if len(shared_accords) >= 1 and bridge_count >= 2:
+            score += 1.4
+
     elif intensity == "Beast Mode":
         if any(x in combined for x in ["amber", "vanilla", "tobacco", "oud", "coffee", "boozy"]):
             score += 2.0
+        if len(shared_base) >= 1:
+            score += 1.0
+
     elif intensity == "Experimental":
-        if len(shared_accords) >= 1:
+        if bridge_count >= 1:
             score += 0.5
+
+    # Brand relationship logic
+    same_brand = str(a["brand"]).strip().lower() == str(b["brand"]).strip().lower()
+
+    if mixing_style == "Same House":
+        if same_brand:
+            score += 2.0
+        else:
+            score -= 1.5
+
+    elif mixing_style == "Cross-House":
+        if not same_brand:
+            score += 2.0
+        else:
+            score -= 1.5
+
+    elif mixing_style == "Balanced":
+        if same_brand:
+            score += 0.5
+        else:
+            score += 0.8
 
     return round(score, 2)
 
@@ -569,7 +639,7 @@ if st.session_state.page == "Home":
     )
     st.session_state.source_mode = source_mode
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
 
     with c1:
         vibe = st.selectbox(
@@ -587,6 +657,8 @@ if st.session_state.page == "Home":
         )
         st.session_state.profile = profile
 
+    c3, c4 = st.columns(2)
+
     with c3:
         intensity = st.selectbox(
             "Intensity",
@@ -594,6 +666,14 @@ if st.session_state.page == "Home":
             index=["Easy", "Signature", "Beast Mode", "Experimental"].index(st.session_state.intensity)
         )
         st.session_state.intensity = intensity
+
+    with c4:
+        mixing_style = st.selectbox(
+            "Mixing Style",
+            ["Balanced", "Same House", "Cross-House"],
+            index=["Balanced", "Same House", "Cross-House"].index(st.session_state.mixing_style)
+        )
+        st.session_state.mixing_style = mixing_style
 
     st.caption("Set the mood, then tap 🧪 Sniff to generate layering ideas.")
 
@@ -618,7 +698,7 @@ if st.session_state.page == "Home":
                         continue
                     seen.add(key)
 
-                    score = combo_score(a, b, vibe, profile, intensity)
+                    score = combo_score(a, b, vibe, profile, intensity, mixing_style)
                     tier = combo_tier(score, intensity)
 
                     results.append({
@@ -631,7 +711,33 @@ if st.session_state.page == "Home":
                         "key": f"{key[0]}|||{key[1]}"
                     })
 
-            st.session_state.latest_combos = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
+            results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+            if mixing_style == "Balanced":
+                same_house = []
+                cross_house = []
+
+                for combo in results:
+                    brand_a = str(combo["a"]["brand"]).strip().lower()
+                    brand_b = str(combo["b"]["brand"]).strip().lower()
+
+                    if brand_a == brand_b:
+                        same_house.append(combo)
+                    else:
+                        cross_house.append(combo)
+
+                mixed_results = []
+                max_len = max(len(same_house), len(cross_house))
+
+                for i in range(max_len):
+                    if i < len(cross_house):
+                        mixed_results.append(cross_house[i])
+                    if i < len(same_house):
+                        mixed_results.append(same_house[i])
+
+                st.session_state.latest_combos = mixed_results[:12]
+            else:
+                st.session_state.latest_combos = results[:12]
 
     if st.session_state.latest_combos:
         st.markdown("### Your Combos")
@@ -644,6 +750,8 @@ if st.session_state.page == "Home":
 
             st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
             st.markdown(f'<div class="tier-chip">{combo["tier"]}</div>', unsafe_allow_html=True)
+            same_house = str(a["brand"]).strip().lower() == str(b["brand"]).strip().lower()
+            st.caption("Same House" if same_house else "Cross-House")
             st.markdown(f'<div class="sniff-name">{combo["combo_name"]}</div>', unsafe_allow_html=True)
             st.write(f"**Layer:** {a['display_name']} + {b['display_name']}")
             st.write(f"**Why it works:** {combo['description']}")
