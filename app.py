@@ -91,6 +91,10 @@ DEFAULTS = {
     "vibe": "Any",
     "profile": "Any",
     "intensity": "Signature",
+
+    # Bulk selection state
+    "browse_selected": [],
+    "collection_selected": [],
 }
 
 for key, value in DEFAULTS.items():
@@ -734,6 +738,22 @@ elif st.session_state.page == "Browse":
 
     results_df = filtered_df.head(30)
 
+    bulk1, bulk2 = st.columns(2)
+    if bulk1.button("➕ Add Selected"):
+        added_any = False
+        for item in st.session_state.browse_selected:
+            if item not in st.session_state.my_collection:
+                st.session_state.my_collection.append(item)
+                added_any = True
+        st.session_state.browse_selected = []
+        if added_any:
+            st.session_state.last_added = "Selected fragrances"
+        st.rerun()
+
+    if bulk2.button("Clear Selection"):
+        st.session_state.browse_selected = []
+        st.rerun()
+
     if results_df.empty:
         st.info("No fragrances matched your search.")
     else:
@@ -757,28 +777,36 @@ elif st.session_state.page == "Browse":
 
             st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
 
-            # Compact fragrance header: Name | Brand
+            selected = st.checkbox(
+                f"Select {row['display_name']}",
+                value=row["display_name"] in st.session_state.browse_selected,
+                key=f"browse_select_{row['id']}",
+                label_visibility="collapsed"
+            )
+
+            if selected and row["display_name"] not in st.session_state.browse_selected:
+                st.session_state.browse_selected.append(row["display_name"])
+            elif not selected and row["display_name"] in st.session_state.browse_selected:
+                st.session_state.browse_selected.remove(row["display_name"])
+
             st.markdown(
                 f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]} '
                 f'<span class="sniff-meta">| {row["brand_pretty"]}</span></div>',
                 unsafe_allow_html=True
             )
 
-            # Inspiration
             if row["inspired_by"]:
                 st.markdown(
                     f'<div><span class="mini-label">Inspired By</span><br>{row["inspired_by"]}</div>',
                     unsafe_allow_html=True
                 )
 
-            # Profile / accords
             st.markdown(
                 f'<div style="margin-top:8px;"><span class="mini-label">Profile</span><br>'
                 f'{row["family"]} | {accord_text}</div>',
                 unsafe_allow_html=True
             )
 
-            # Action buttons
             b1, b2, b3 = st.columns(3)
 
             if b1.button("➕", key=f"add_{row['id']}"):
@@ -794,7 +822,6 @@ elif st.session_state.page == "Browse":
 
             b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
 
-            # Optional details
             with st.expander("More details"):
                 st.markdown(f"**Top Notes**  \n{top_notes}")
                 st.markdown(f"**Middle Notes**  \n{middle_notes}")
@@ -808,6 +835,19 @@ elif st.session_state.page == "Browse":
 elif st.session_state.page == "Collection":
     st.markdown("### My Collection")
 
+    top1, top2 = st.columns(2)
+    if top1.button("✕ Remove Selected"):
+        st.session_state.my_collection = [
+            x for x in st.session_state.my_collection
+            if x not in st.session_state.collection_selected
+        ]
+        st.session_state.collection_selected = []
+        st.rerun()
+
+    if top2.button("Clear Selection", key="clear_collection_selection"):
+        st.session_state.collection_selected = []
+        st.rerun()
+
     if st.session_state.my_collection:
         collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
 
@@ -817,12 +857,33 @@ elif st.session_state.page == "Collection":
                 continue
 
             st.markdown(f"#### {family_icon(family)} {family}")
+
             for _, row in family_rows.sort_values("display_name").iterrows():
+                st.markdown('<div class="collection-chip">', unsafe_allow_html=True)
+
+                selected = st.checkbox(
+                    f"Select {row['display_name']}",
+                    value=row["display_name"] in st.session_state.collection_selected,
+                    key=f"collection_select_{row['display_name']}",
+                    label_visibility="collapsed"
+                )
+
+                if selected and row["display_name"] not in st.session_state.collection_selected:
+                    st.session_state.collection_selected.append(row["display_name"])
+                elif not selected and row["display_name"] in st.session_state.collection_selected:
+                    st.session_state.collection_selected.remove(row["display_name"])
+
                 c1, c2 = st.columns([6, 1])
-                c1.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
+                c1.markdown(f"**{row['display_name']}**")
                 if c2.button("✕", key=f"remove_{row['display_name']}"):
-                    st.session_state.my_collection = [x for x in st.session_state.my_collection if x != row["display_name"]]
+                    st.session_state.my_collection = [
+                        x for x in st.session_state.my_collection if x != row["display_name"]
+                    ]
+                    if row["display_name"] in st.session_state.collection_selected:
+                        st.session_state.collection_selected.remove(row["display_name"])
                     st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("Your collection is empty.")
 
