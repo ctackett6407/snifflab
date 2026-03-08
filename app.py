@@ -724,74 +724,83 @@ elif st.session_state.page == "Browse":
         filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
 
     filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
-    filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
-    filtered_df = filtered_df.sort_values(["brand_priority", "brand_pretty", "name_pretty"], ascending=[True, True, True])
+    filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(
+        lambda x: 0 if x == "desmirage" else 1
+    )
+    filtered_df = filtered_df.sort_values(
+        ["brand_priority", "brand_pretty", "name_pretty"],
+        ascending=[True, True, True]
+    )
 
     results_df = filtered_df.head(30)
 
-if results_df.empty:
-    st.info("No fragrances matched your search.")
-else:
-    st.caption(f"Showing {len(results_df)} result(s)")
+    if results_df.empty:
+        st.info("No fragrances matched your search.")
+    else:
+        st.caption(f"Showing {len(results_df)} result(s)")
 
-    for _, row in results_df.iterrows():
-        accords = [x for x in [
-            row["mainaccord1"],
-            row["mainaccord2"],
-            row["mainaccord3"],
-            row["mainaccord4"],
-            row["mainaccord5"],
-        ] if x]
+        for _, row in results_df.iterrows():
+            accords = [
+                x for x in [
+                    row["mainaccord1"],
+                    row["mainaccord2"],
+                    row["mainaccord3"],
+                    row["mainaccord4"],
+                    row["mainaccord5"],
+                ] if x
+            ]
 
-        top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
-        middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
-        base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
-        accord_text = " • ".join(accords[:4]) if accords else "—"
+            top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
+            middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
+            base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
+            accord_text = " • ".join(accords[:4]) if accords else "—"
 
-        st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
 
-        # Main compact header
-        st.markdown(
-            f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]} <span class="sniff-meta">| {row["brand_pretty"]}</span></div>',
-            unsafe_allow_html=True
-        )
-
-        # Inspiration
-        if row["inspired_by"]:
+            # Compact fragrance header: Name | Brand
             st.markdown(
-                f'<div><span class="mini-label">Inspired By</span><br>{row["inspired_by"]}</div>',
+                f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]} '
+                f'<span class="sniff-meta">| {row["brand_pretty"]}</span></div>',
                 unsafe_allow_html=True
             )
 
-        # Family + accords in a cleaner long-form line
-        st.markdown(
-            f'<div style="margin-top:8px;"><span class="mini-label">Profile</span><br>{row["family"]} | {accord_text}</div>',
-            unsafe_allow_html=True
-        )
+            # Inspiration
+            if row["inspired_by"]:
+                st.markdown(
+                    f'<div><span class="mini-label">Inspired By</span><br>{row["inspired_by"]}</div>',
+                    unsafe_allow_html=True
+                )
 
-        # Buttons
-        b1, b2, b3 = st.columns(3)
+            # Profile / accords
+            st.markdown(
+                f'<div style="margin-top:8px;"><span class="mini-label">Profile</span><br>'
+                f'{row["family"]} | {accord_text}</div>',
+                unsafe_allow_html=True
+            )
 
-        if b1.button("➕", key=f"add_{row['id']}"):
-            if row["display_name"] not in st.session_state.my_collection:
-                st.session_state.my_collection.append(row["display_name"])
-            st.session_state.last_added = row["display_name"]
-            st.rerun()
+            # Action buttons
+            b1, b2, b3 = st.columns(3)
 
-        if b2.button("⭐", key=f"save_frag_{row['id']}"):
-            if row["display_name"] not in st.session_state.sniff_list:
-                st.session_state.sniff_list.append(row["display_name"])
-            st.rerun()
+            if b1.button("➕", key=f"add_{row['id']}"):
+                if row["display_name"] not in st.session_state.my_collection:
+                    st.session_state.my_collection.append(row["display_name"])
+                st.session_state.last_added = row["display_name"]
+                st.rerun()
 
-        b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
+            if b2.button("⭐", key=f"save_frag_{row['id']}"):
+                if row["display_name"] not in st.session_state.sniff_list:
+                    st.session_state.sniff_list.append(row["display_name"])
+                st.rerun()
 
-        # Optional details
-        with st.expander("More details"):
-            st.markdown(f"**Top Notes**  \n{top_notes}")
-            st.markdown(f"**Middle Notes**  \n{middle_notes}")
-            st.markdown(f"**Base Notes**  \n{base_notes}")
+            b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
 
-        st.markdown("</div>", unsafe_allow_html=True)
+            # Optional details
+            with st.expander("More details"):
+                st.markdown(f"**Top Notes**  \n{top_notes}")
+                st.markdown(f"**Middle Notes**  \n{middle_notes}")
+                st.markdown(f"**Base Notes**  \n{base_notes}")
+
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================================================
 # PAGE: COLLECTION
