@@ -2,9 +2,16 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 
+# =========================================================
+# SNIFFLAB CONFIG
+# =========================================================
+# Main catalog file the app reads from
 CSV_PATH = "data/fragrances_master.csv"
+
+# Amazon affiliate tag for product search links
 AFFILIATE_TAG = "christacket04-20"
 
+# Basic Streamlit page config
 st.set_page_config(
     page_title="SniffLab",
     page_icon="🧪",
@@ -12,17 +19,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# -----------------------------
-# Theme presets
-# -----------------------------
+# =========================================================
+# THEME PRESETS
+# =========================================================
+# "System Default" means no custom CSS theme is applied.
+# The others apply a full preset color style across cards,
+# buttons, chips, text, and inputs.
 THEMES = {
+    "System Default": None,
     "Midnight": {
         "bg": "#050816",
         "card": "#111827",
         "text": "#F9FAFB",
         "muted": "#9CA3AF",
         "accent": "#8B5CF6",
-        "border": "#374151"
+        "border": "#374151",
+        "button_text": "#F9FAFB",
+        "button_hover_text": "#050816",
     },
     "Pink Pretty": {
         "bg": "#FFF7FB",
@@ -30,7 +43,9 @@ THEMES = {
         "text": "#5B2145",
         "muted": "#9D4D7B",
         "accent": "#EC4899",
-        "border": "#F9A8D4"
+        "border": "#F9A8D4",
+        "button_text": "#5B2145",
+        "button_hover_text": "#FFFFFF",
     },
     "Monochrome": {
         "bg": "#111111",
@@ -38,7 +53,9 @@ THEMES = {
         "text": "#F5F5F5",
         "muted": "#BDBDBD",
         "accent": "#E5E7EB",
-        "border": "#444444"
+        "border": "#444444",
+        "button_text": "#F5F5F5",
+        "button_hover_text": "#111111",
     },
     "Rainbow Pop": {
         "bg": "#0F172A",
@@ -46,179 +63,234 @@ THEMES = {
         "text": "#F8FAFC",
         "muted": "#CBD5E1",
         "accent": "#22D3EE",
-        "border": "#A78BFA"
+        "border": "#A78BFA",
+        "button_text": "#F8FAFC",
+        "button_hover_text": "#0F172A",
     },
 }
 
-# -----------------------------
-# Session state
-# -----------------------------
+# =========================================================
+# SESSION STATE DEFAULTS
+# =========================================================
+# These keep the app stateful during a session so the user
+# can browse, add, sniff, and save without losing progress.
 if "theme_name" not in st.session_state:
-    st.session_state.theme_name = "Midnight"
+    st.session_state.theme_name = "System Default"
+
 if "page" not in st.session_state:
     st.session_state.page = "Home"
+
 if "my_collection" not in st.session_state:
     st.session_state.my_collection = []
+
 if "sniff_list" not in st.session_state:
     st.session_state.sniff_list = []
+
 if "combo_ratings" not in st.session_state:
     st.session_state.combo_ratings = {}
+
 if "last_added" not in st.session_state:
     st.session_state.last_added = ""
+
 if "latest_combos" not in st.session_state:
     st.session_state.latest_combos = []
+
 if "brand_filter" not in st.session_state:
     st.session_state.brand_filter = "All Brands"
+
 if "search_query" not in st.session_state:
     st.session_state.search_query = ""
+
 if "sniff_mode" not in st.session_state:
     st.session_state.sniff_mode = "My Collection Only"
+
 if "mood" not in st.session_state:
     st.session_state.mood = "Any"
 
+# Current active theme preset
 theme = THEMES[st.session_state.theme_name]
 
-# -----------------------------
-# Styles
-# -----------------------------
-st.markdown(f"""
-<style>
-    .stApp {{
-        background-color: {theme['bg']};
-        color: {theme['text']};
-    }}
+# =========================================================
+# GLOBAL APP STYLING
+# =========================================================
+# If the user selects "System Default", this CSS block is skipped
+# so the app uses normal Streamlit styling.
+if theme is not None:
+    st.markdown(f"""
+    <style>
+        .stApp {{
+            background-color: {theme['bg']};
+            color: {theme['text']};
+        }}
 
-    .main-title {{
-        font-size: 2rem;
-        font-weight: 800;
-        margin-bottom: 0.15rem;
-        color: {theme['text']};
-    }}
+        .main-title {{
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.15rem;
+            color: {theme['text']};
+        }}
 
-    .sub-title {{
-        font-size: 1rem;
-        color: {theme['muted']};
-        margin-bottom: 0.8rem;
-    }}
+        .sub-title {{
+            font-size: 1rem;
+            color: {theme['muted']};
+            margin-bottom: 0.8rem;
+        }}
 
-    .hint-box {{
-        background: {theme['card']};
-        border: 1px solid {theme['border']};
-        border-radius: 14px;
-        padding: 12px 14px;
-        margin-bottom: 12px;
-        color: {theme['muted']};
-        font-size: 0.95rem;
-    }}
+        .hint-box {{
+            background: {theme['card']};
+            border: 1px solid {theme['border']};
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            color: {theme['muted']};
+            font-size: 0.95rem;
+        }}
 
-    .sniff-card {{
-        background: {theme['card']};
-        border: 1px solid {theme['border']};
-        border-radius: 18px;
-        padding: 14px;
-        margin-bottom: 10px;
-    }}
+        .sniff-card {{
+            background: {theme['card']};
+            border: 1px solid {theme['border']};
+            border-radius: 18px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }}
 
-    .sniff-name {{
-        font-size: 1.05rem;
-        font-weight: 700;
-        color: {theme['text']};
-        margin-bottom: 0.15rem;
-    }}
+        .sniff-name {{
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: {theme['text']};
+            margin-bottom: 0.15rem;
+        }}
 
-    .sniff-meta {{
-        color: {theme['muted']};
-        font-size: 0.92rem;
-        margin-bottom: 0.3rem;
-    }}
+        .sniff-meta {{
+            color: {theme['muted']};
+            font-size: 0.92rem;
+            margin-bottom: 0.3rem;
+        }}
 
-    .mini-label {{
-        color: {theme['muted']};
-        font-size: 0.82rem;
-        margin-bottom: 0.1rem;
-    }}
+        .mini-label {{
+            color: {theme['muted']};
+            font-size: 0.82rem;
+            margin-bottom: 0.1rem;
+        }}
 
-    .collection-chip {{
-        background: {theme['card']};
-        border: 1px solid {theme['border']};
-        border-radius: 12px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-    }}
+        .collection-chip {{
+            background: {theme['card']};
+            border: 1px solid {theme['border']};
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }}
 
-    .hero-box {{
-        background: {theme['card']};
-        border: 1px solid {theme['border']};
-        border-radius: 20px;
-        padding: 16px;
-        margin-bottom: 14px;
-    }}
+        .hero-box {{
+            background: {theme['card']};
+            border: 1px solid {theme['border']};
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }}
 
-    .small-note {{
-        color: {theme['muted']};
-        font-size: 0.86rem;
-    }}
+        .small-note {{
+            color: {theme['muted']};
+            font-size: 0.86rem;
+        }}
 
-    div.stButton > button {{
-        background-color: {theme['card']} !important;
-        color: {theme['text']} !important;
-        border: 1px solid {theme['border']} !important;
-        border-radius: 12px !important;
-        min-height: 44px !important;
-        font-size: 18px !important;
-        box-shadow: none !important;
-    }}
+        /* =========================
+           BUTTONS
+           ========================= */
+        div.stButton > button {{
+            background-color: {theme['card']} !important;
+            color: {theme['button_text']} !important;
+            border: 1px solid {theme['border']} !important;
+            border-radius: 12px !important;
+            min-height: 44px !important;
+            font-size: 18px !important;
+            box-shadow: none !important;
+            -webkit-text-fill-color: {theme['button_text']} !important;
+        }}
 
-    div.stButton > button:hover {{
-        background-color: {theme['accent']} !important;
-        color: {theme['bg']} !important;
-        border-color: {theme['accent']} !important;
-    }}
+        div.stButton > button p,
+        div.stButton > button span {{
+            color: {theme['button_text']} !important;
+            -webkit-text-fill-color: {theme['button_text']} !important;
+        }}
 
-    div.stButton > button[kind="primary"] {{
-        background-color: {theme['accent']} !important;
-        color: {theme['bg']} !important;
-        border-color: {theme['accent']} !important;
-        font-weight: 700 !important;
-    }}
+        div.stButton > button:hover {{
+            background-color: {theme['accent']} !important;
+            color: {theme['button_hover_text']} !important;
+            border-color: {theme['accent']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
 
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="input"] > div {{
-        background-color: {theme['card']} !important;
-        border-color: {theme['border']} !important;
-        color: {theme['text']} !important;
-        border-radius: 12px !important;
-    }}
+        div.stButton > button:hover p,
+        div.stButton > button:hover span {{
+            color: {theme['button_hover_text']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
 
-    input {{
-        color: {theme['text']} !important;
-    }}
+        div.stButton > button[kind="primary"] {{
+            background-color: {theme['accent']} !important;
+            color: {theme['button_hover_text']} !important;
+            border-color: {theme['accent']} !important;
+            font-weight: 700 !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
 
-    .stLinkButton a {{
-        background-color: {theme['card']} !important;
-        color: {theme['text']} !important;
-        border: 1px solid {theme['border']} !important;
-        border-radius: 12px !important;
-        min-height: 44px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        text-decoration: none !important;
-    }}
+        div.stButton > button[kind="primary"] p,
+        div.stButton > button[kind="primary"] span {{
+            color: {theme['button_hover_text']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
 
-    .stLinkButton a:hover {{
-        background-color: {theme['accent']} !important;
-        color: {theme['bg']} !important;
-        border-color: {theme['accent']} !important;
-    }}
-</style>
-""", unsafe_allow_html=True)
+        /* =========================
+           INPUTS / SELECTS
+           ========================= */
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div {{
+            background-color: {theme['card']} !important;
+            border-color: {theme['border']} !important;
+            color: {theme['text']} !important;
+            border-radius: 12px !important;
+        }}
 
-# -----------------------------
-# Helpers
-# -----------------------------
+        input {{
+            color: {theme['text']} !important;
+            -webkit-text-fill-color: {theme['text']} !important;
+        }}
+
+        /* =========================
+           LINK BUTTONS
+           ========================= */
+        .stLinkButton a {{
+            background-color: {theme['card']} !important;
+            color: {theme['button_text']} !important;
+            border: 1px solid {theme['border']} !important;
+            border-radius: 12px !important;
+            min-height: 44px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-decoration: none !important;
+            -webkit-text-fill-color: {theme['button_text']} !important;
+        }}
+
+        .stLinkButton a:hover {{
+            background-color: {theme['accent']} !important;
+            color: {theme['button_hover_text']} !important;
+            border-color: {theme['accent']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# =========================================================
+# DATA HELPERS
+# =========================================================
 @st.cache_data
 def load_fragrances():
+    """
+    Load the master fragrance catalog and create friendly
+    search/display columns used throughout the app.
+    """
     df = pd.read_csv(CSV_PATH, dtype=str).fillna("")
 
     def pretty_text(value: str) -> str:
@@ -231,6 +303,9 @@ def load_fragrances():
         return [x.strip() for x in str(value).split(";") if x.strip()]
 
     def infer_family(row):
+        """
+        Lightweight family detection for grouping collection items.
+        """
         text = " ".join([
             str(row.get("mainaccord1", "")),
             str(row.get("mainaccord2", "")),
@@ -275,21 +350,30 @@ def load_fragrances():
     df["top_list"] = df["top_notes"].apply(split_notes)
     df["middle_list"] = df["middle_notes"].apply(split_notes)
     df["base_list"] = df["base_notes"].apply(split_notes)
-    df["accords"] = df[["mainaccord1", "mainaccord2", "mainaccord3", "mainaccord4", "mainaccord5"]].apply(
+
+    df["accords"] = df[
+        ["mainaccord1", "mainaccord2", "mainaccord3", "mainaccord4", "mainaccord5"]
+    ].apply(
         lambda row: [x.strip().lower() for x in row.tolist() if str(x).strip()],
         axis=1
     )
+
     df["all_notes"] = df.apply(
         lambda row: list(dict.fromkeys(row["top_list"] + row["middle_list"] + row["base_list"])),
         axis=1
     )
+
     df["family"] = df.apply(infer_family, axis=1)
     return df
 
+
 def amazon_search_link(query: str) -> str:
+    """Build Amazon affiliate search link."""
     return f"https://www.amazon.com/s?k={urllib.parse.quote_plus(query)}&tag={AFFILIATE_TAG}"
 
+
 def family_icon(family):
+    """Emoji label for collection grouping."""
     return {
         "Gourmand": "🧁",
         "Floral": "🌸",
@@ -299,7 +383,12 @@ def family_icon(family):
         "Other": "🧪"
     }.get(family, "🧪")
 
+
 def combo_score(a, b, mood):
+    """
+    Very lightweight pairing score based on shared accords,
+    shared notes, and a few simple bonus rules.
+    """
     accords_a = set(a["accords"])
     accords_b = set(b["accords"])
     notes_a = set([x.lower() for x in a["all_notes"]])
@@ -339,8 +428,11 @@ def combo_score(a, b, mood):
 
     return round(score, 2)
 
+
 def combo_description(a, b):
+    """Short plain-English combo summary."""
     text = " ".join(a["accords"] + b["accords"] + [x.lower() for x in a["all_notes"] + b["all_notes"]])
+
     if any(x in text for x in ["gourmand", "vanilla", "sweet", "dessert"]):
         return "Sweet, creamy layering with a cozy dessert-like feel."
     if any(x in text for x in ["floral", "rose", "jasmine", "orange blossom"]):
@@ -353,21 +445,25 @@ def combo_description(a, b):
         return "Juicy, playful layering with added brightness and dimension."
     return "Balanced layering with shared notes and complementary structure."
 
+
 def combo_name(a, b):
+    """Simple combo naming logic."""
     one = a["name_pretty"].split()[0]
     two = b["name_pretty"].split()[0]
     if one.lower() != two.lower():
         return f"{one} x {two}"
     return f"{a['name_pretty']} Blend"
 
+# Load catalog once
 df = load_fragrances()
 
-# -----------------------------
-# Sidebar menu
-# -----------------------------
+# =========================================================
+# SIDEBAR MENU
+# =========================================================
 with st.sidebar:
     st.header("SniffLab")
     st.caption("Use the menu below")
+
     page = st.radio(
         "Go to",
         ["Home", "Browse", "Collection", "Sniff", "Saved"],
@@ -378,6 +474,8 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+
+    # Theme selector, including "System Default"
     selected_theme = st.selectbox(
         "Theme",
         list(THEMES.keys()),
@@ -390,9 +488,9 @@ with st.sidebar:
     st.divider()
     st.caption("As an Amazon Associate I earn from qualifying purchases.")
 
-# -----------------------------
-# Header
-# -----------------------------
+# =========================================================
+# TOP HEADER
+# =========================================================
 st.markdown('<div class="main-title">🧪 SniffLab</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Fragrance layering made simple.</div>', unsafe_allow_html=True)
 
@@ -405,20 +503,20 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# -----------------------------
-# Pages
-# -----------------------------
+# =========================================================
+# PAGE: HOME
+# =========================================================
 if st.session_state.page == "Home":
     st.markdown("### Welcome")
     st.markdown("""
-<div class="hero-box">
-<b>How SniffLab works</b><br><br>
-1. Open <b>Browse</b> and find your fragrances.<br>
-2. Tap <b>➕</b> to add them to your collection.<br>
-3. Open <b>Sniff</b> to get layering ideas.<br>
-4. Use <b>⭐</b> to save things for later.
-</div>
-""", unsafe_allow_html=True)
+    <div class="hero-box">
+    <b>How SniffLab works</b><br><br>
+    1. Open <b>Browse</b> and find your fragrances.<br>
+    2. Tap <b>➕</b> to add them to your collection.<br>
+    3. Open <b>Sniff</b> to get layering ideas.<br>
+    4. Use <b>⭐</b> to save things for later.
+    </div>
+    """, unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     if c1.button("Browse Fragrances"):
@@ -430,9 +528,13 @@ if st.session_state.page == "Home":
 
     st.caption("➕ Add  •  ⭐ Save  •  ✕ Remove  •  🛒 Check Price")
 
+# =========================================================
+# PAGE: BROWSE
+# =========================================================
 elif st.session_state.page == "Browse":
     st.markdown("### Browse Fragrances")
 
+    # Quick brand buttons
     quick1, quick2, quick3 = st.columns(3)
     if quick1.button("Desmirage"):
         st.session_state.search_query = "desmirage"
@@ -447,6 +549,7 @@ elif st.session_state.page == "Browse":
         st.session_state.brand_filter = "All Brands"
         st.rerun()
 
+    # Search / filter controls
     filter_col1, filter_col2 = st.columns([1, 2])
     all_brands = sorted(df["brand_pretty"].dropna().unique().tolist())
 
@@ -467,6 +570,7 @@ elif st.session_state.page == "Browse":
         )
         st.session_state.search_query = search_query
 
+    # Apply filters
     filtered_df = df.copy()
 
     if brand_filter != "All Brands":
@@ -476,9 +580,13 @@ elif st.session_state.page == "Browse":
         q = search_query.strip().lower()
         filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
 
+    # Hide items already in the user's collection
     filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
+
+    # Prioritize desmirage slightly in browse results
     filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
     filtered_df = filtered_df.sort_values(["brand_priority", "brand_pretty", "name_pretty"], ascending=[True, True, True])
+
     results_df = filtered_df.head(24)
 
     if results_df.empty:
@@ -493,11 +601,20 @@ elif st.session_state.page == "Browse":
             if row["inspired_by"]:
                 st.markdown(f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>', unsafe_allow_html=True)
 
-            accord_text = ", ".join([x for x in [row["mainaccord1"], row["mainaccord2"], row["mainaccord3"], row["mainaccord4"], row["mainaccord5"]] if x])
+            accord_text = ", ".join([
+                x for x in [
+                    row["mainaccord1"],
+                    row["mainaccord2"],
+                    row["mainaccord3"],
+                    row["mainaccord4"],
+                    row["mainaccord5"]
+                ] if x
+            ])
             if accord_text:
                 st.markdown(f'<div class="mini-label">Accords</div><div>{accord_text}</div>', unsafe_allow_html=True)
 
-            b1, b2 = st.columns([1, 1])
+            b1, b2 = st.columns(2)
+
             if b1.button("➕", key=f"add_{row['id']}"):
                 if row["display_name"] not in st.session_state.my_collection:
                     st.session_state.my_collection.append(row["display_name"])
@@ -511,6 +628,9 @@ elif st.session_state.page == "Browse":
 
             st.markdown("</div>", unsafe_allow_html=True)
 
+# =========================================================
+# PAGE: COLLECTION
+# =========================================================
 elif st.session_state.page == "Collection":
     st.markdown("### My Collection")
 
@@ -527,11 +647,16 @@ elif st.session_state.page == "Collection":
                 c1, c2 = st.columns([6, 1])
                 c1.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
                 if c2.button("✕", key=f"remove_{row['display_name']}"):
-                    st.session_state.my_collection = [x for x in st.session_state.my_collection if x != row["display_name"]]
+                    st.session_state.my_collection = [
+                        x for x in st.session_state.my_collection if x != row["display_name"]
+                    ]
                     st.rerun()
     else:
         st.info("Your collection is empty.")
 
+# =========================================================
+# PAGE: SNIFF
+# =========================================================
 elif st.session_state.page == "Sniff":
     st.markdown("### Sniff")
 
@@ -603,7 +728,7 @@ elif st.session_state.page == "Sniff":
             st.write(f"**Current rating:** {saved_rating.title() if saved_rating != 'unreviewed' else 'Unreviewed'}")
             st.caption("Suggested use: 2 sprays of the richer scent on chest, 1 spray of the brighter scent on neck or shirt.")
 
-            r1, r2, r3, r4, r5, r6 = st.columns([1, 1, 1, 1, 1, 1])
+            r1, r2, r3, r4, r5, r6 = st.columns(6)
 
             if r1.button("🚀", key=f"amazing_{combo_key}"):
                 st.session_state.combo_ratings[combo_key] = "amazing"
@@ -625,6 +750,9 @@ elif st.session_state.page == "Sniff":
             r6.link_button("🛒", amazon_search_link(b["name_pretty"]))
             st.markdown("</div>", unsafe_allow_html=True)
 
+# =========================================================
+# PAGE: SAVED
+# =========================================================
 elif st.session_state.page == "Saved":
     st.markdown("### Sniff List")
 
