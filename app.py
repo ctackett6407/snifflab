@@ -39,19 +39,6 @@ THEMES = {
         "button_hover_bg": "#8B5CF6",
         "button_hover_text": "#050816",
     },
-    "Pink Pretty": {
-        # Hot pink, high contrast
-        "bg": "#FFF0F8",
-        "card": "#FFD9EE",
-        "text": "#4A1030",
-        "muted": "#9C4A76",
-        "accent": "#FF2DAA",
-        "border": "#FF7FC4",
-        "button_bg": "#C21875",
-        "button_text": "#FFFFFF",
-        "button_hover_bg": "#8E0E56",
-        "button_hover_text": "#FFFFFF",
-    },
     "Monochrome": {
         "bg": "#111111",
         "card": "#1F1F1F",
@@ -64,17 +51,29 @@ THEMES = {
         "button_hover_bg": "#E5E7EB",
         "button_hover_text": "#111111",
     },
+    "Pink Pretty": {
+        "bg": "#FFF0F8",
+        "card": "#FFD9EE",
+        "text": "#4A1030",
+        "muted": "#9C4A76",
+        "accent": "#FF2DAA",
+        "border": "#FF7FC4",
+        "button_bg": "#A1005A",
+        "button_text": "#FFFFFF",
+        "button_hover_bg": "#6F003D",
+        "button_hover_text": "#FFFFFF",
+    },
+
     "Rainbow Pop": {
-        # Candy-bright overall, but buttons use deep saturated contrast
         "bg": "#FFF8FF",
         "card": "#FFF0FB",
         "text": "#2A1540",
         "muted": "#7A5A9A",
         "accent": "#FF4FD8",
         "border": "#9B5CFF",
-        "button_bg": "#6A00F4",
+        "button_bg": "#4C00B8",
         "button_text": "#FFFFFF",
-        "button_hover_bg": "#FF006E",
+        "button_hover_bg": "#D1006C",
         "button_hover_text": "#FFFFFF",
     },
 }
