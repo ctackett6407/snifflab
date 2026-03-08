@@ -8,7 +8,8 @@ AFFILIATE_TAG = "christacket04-20"
 st.set_page_config(
     page_title="SniffLab",
     page_icon="🧪",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
 # -----------------------------
@@ -49,8 +50,13 @@ THEMES = {
     },
 }
 
+# -----------------------------
+# Session state
+# -----------------------------
 if "theme_name" not in st.session_state:
     st.session_state.theme_name = "Midnight"
+if "page" not in st.session_state:
+    st.session_state.page = "Home"
 if "my_collection" not in st.session_state:
     st.session_state.my_collection = []
 if "sniff_list" not in st.session_state:
@@ -65,33 +71,46 @@ if "brand_filter" not in st.session_state:
     st.session_state.brand_filter = "All Brands"
 if "search_query" not in st.session_state:
     st.session_state.search_query = ""
+if "sniff_mode" not in st.session_state:
+    st.session_state.sniff_mode = "My Collection Only"
+if "mood" not in st.session_state:
+    st.session_state.mood = "Any"
 
 theme = THEMES[st.session_state.theme_name]
 
+# -----------------------------
+# Styles
+# -----------------------------
 st.markdown(f"""
 <style>
     .stApp {{
         background-color: {theme['bg']};
         color: {theme['text']};
     }}
+
     .main-title {{
-        font-size: 2.1rem;
+        font-size: 2rem;
         font-weight: 800;
         margin-bottom: 0.15rem;
         color: {theme['text']};
     }}
+
     .sub-title {{
         font-size: 1rem;
         color: {theme['muted']};
-        margin-bottom: 0.9rem;
+        margin-bottom: 0.8rem;
     }}
-    .help-box {{
+
+    .hint-box {{
         background: {theme['card']};
         border: 1px solid {theme['border']};
-        border-radius: 16px;
-        padding: 14px 16px;
+        border-radius: 14px;
+        padding: 12px 14px;
         margin-bottom: 12px;
+        color: {theme['muted']};
+        font-size: 0.95rem;
     }}
+
     .sniff-card {{
         background: {theme['card']};
         border: 1px solid {theme['border']};
@@ -99,22 +118,26 @@ st.markdown(f"""
         padding: 14px;
         margin-bottom: 10px;
     }}
-    .mini-label {{
-        color: {theme['muted']};
-        font-size: 0.82rem;
-        margin-bottom: 0.1rem;
-    }}
+
     .sniff-name {{
         font-size: 1.05rem;
         font-weight: 700;
         color: {theme['text']};
         margin-bottom: 0.15rem;
     }}
+
     .sniff-meta {{
         color: {theme['muted']};
         font-size: 0.92rem;
         margin-bottom: 0.3rem;
     }}
+
+    .mini-label {{
+        color: {theme['muted']};
+        font-size: 0.82rem;
+        margin-bottom: 0.1rem;
+    }}
+
     .collection-chip {{
         background: {theme['card']};
         border: 1px solid {theme['border']};
@@ -122,26 +145,71 @@ st.markdown(f"""
         padding: 10px 12px;
         margin-bottom: 8px;
     }}
+
+    .hero-box {{
+        background: {theme['card']};
+        border: 1px solid {theme['border']};
+        border-radius: 20px;
+        padding: 16px;
+        margin-bottom: 14px;
+    }}
+
     .small-note {{
         color: {theme['muted']};
-        font-size: 0.85rem;
+        font-size: 0.86rem;
     }}
-    .brand-chip {{
-        text-align: center;
-        padding: 8px 10px;
-        border-radius: 999px;
-        border: 1px solid {theme['border']};
-        background: {theme['card']};
-        color: {theme['text']};
-        font-size: 0.9rem;
-        margin-bottom: 8px;
-    }}
-    button[kind="secondary"] {{
+
+    div.stButton > button {{
+        background-color: {theme['card']} !important;
+        color: {theme['text']} !important;
+        border: 1px solid {theme['border']} !important;
+        border-radius: 12px !important;
         min-height: 44px !important;
         font-size: 18px !important;
+        box-shadow: none !important;
     }}
+
+    div.stButton > button:hover {{
+        background-color: {theme['accent']} !important;
+        color: {theme['bg']} !important;
+        border-color: {theme['accent']} !important;
+    }}
+
+    div.stButton > button[kind="primary"] {{
+        background-color: {theme['accent']} !important;
+        color: {theme['bg']} !important;
+        border-color: {theme['accent']} !important;
+        font-weight: 700 !important;
+    }}
+
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div {{
+        background-color: {theme['card']} !important;
+        border-color: {theme['border']} !important;
+        color: {theme['text']} !important;
+        border-radius: 12px !important;
+    }}
+
+    input {{
+        color: {theme['text']} !important;
+    }}
+
     .stLinkButton a {{
+        background-color: {theme['card']} !important;
+        color: {theme['text']} !important;
+        border: 1px solid {theme['border']} !important;
+        border-radius: 12px !important;
         min-height: 44px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-decoration: none !important;
+    }}
+
+    .stLinkButton a:hover {{
+        background-color: {theme['accent']} !important;
+        color: {theme['bg']} !important;
+        border-color: {theme['accent']} !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -218,10 +286,18 @@ def load_fragrances():
     df["family"] = df.apply(infer_family, axis=1)
     return df
 
-
 def amazon_search_link(query: str) -> str:
     return f"https://www.amazon.com/s?k={urllib.parse.quote_plus(query)}&tag={AFFILIATE_TAG}"
 
+def family_icon(family):
+    return {
+        "Gourmand": "🧁",
+        "Floral": "🌸",
+        "Fresh": "🍋",
+        "Woody / Warm": "🪵",
+        "Fruity": "🍒",
+        "Other": "🧪"
+    }.get(family, "🧪")
 
 def combo_score(a, b, mood):
     accords_a = set(a["accords"])
@@ -231,8 +307,8 @@ def combo_score(a, b, mood):
 
     shared_accords = accords_a & accords_b
     shared_notes = notes_a & notes_b
-
     score = len(shared_accords) * 3 + len(shared_notes) * 1.5
+
     combined_text = " ".join(list(accords_a | accords_b) + list(notes_a | notes_b))
 
     bonus_pairs = [
@@ -263,13 +339,12 @@ def combo_score(a, b, mood):
 
     return round(score, 2)
 
-
 def combo_description(a, b):
     text = " ".join(a["accords"] + b["accords"] + [x.lower() for x in a["all_notes"] + b["all_notes"]])
     if any(x in text for x in ["gourmand", "vanilla", "sweet", "dessert"]):
         return "Sweet, creamy layering with a cozy dessert-like feel."
     if any(x in text for x in ["floral", "rose", "jasmine", "orange blossom"]):
-        return "Soft floral layering with lift, glow, and smooth sweetness."
+        return "Soft floral layering with lift and smooth sweetness."
     if any(x in text for x in ["fresh", "citrus", "marine", "bergamot"]):
         return "Bright, airy layering that feels clean and easy to wear."
     if any(x in text for x in ["woody", "amber", "tobacco", "patchouli"]):
@@ -278,7 +353,6 @@ def combo_description(a, b):
         return "Juicy, playful layering with added brightness and dimension."
     return "Balanced layering with shared notes and complementary structure."
 
-
 def combo_name(a, b):
     one = a["name_pretty"].split()[0]
     two = b["name_pretty"].split()[0]
@@ -286,30 +360,24 @@ def combo_name(a, b):
         return f"{one} x {two}"
     return f"{a['name_pretty']} Blend"
 
-
-def family_icon(family):
-    return {
-        "Gourmand": "🧁",
-        "Floral": "🌸",
-        "Fresh": "🍋",
-        "Woody / Warm": "🪵",
-        "Fruity": "🍒",
-        "Other": "🧪"
-    }.get(family, "🧪")
-
-
 df = load_fragrances()
 
 # -----------------------------
-# Header
+# Sidebar menu
 # -----------------------------
-top_left, top_right = st.columns([4, 1])
+with st.sidebar:
+    st.header("SniffLab")
+    st.caption("Use the menu below")
+    page = st.radio(
+        "Go to",
+        ["Home", "Browse", "Collection", "Sniff", "Saved"],
+        index=["Home", "Browse", "Collection", "Sniff", "Saved"].index(st.session_state.page)
+    )
+    if page != st.session_state.page:
+        st.session_state.page = page
+        st.rerun()
 
-with top_left:
-    st.markdown('<div class="main-title">🧪 SniffLab</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Build your collection, then sniff for layering ideas.</div>', unsafe_allow_html=True)
-
-with top_right:
+    st.divider()
     selected_theme = st.selectbox(
         "Theme",
         list(THEMES.keys()),
@@ -319,245 +387,253 @@ with top_right:
         st.session_state.theme_name = selected_theme
         st.rerun()
 
-st.markdown("""
-<div class="help-box">
-<b>How to use SniffLab</b><br>
-1. Search for a fragrance you own.<br>
-2. Tap ➕ to add it.<br>
-3. See it in <b>My Collection</b> below.<br>
-4. Tap 🧪 Sniff for layering ideas.
-</div>
-""", unsafe_allow_html=True)
-st.caption("➕ Add  •  ⭐ Save  •  ✕ Remove  •  🛒 Check Price")
+    st.divider()
+    st.caption("As an Amazon Associate I earn from qualifying purchases.")
+
+# -----------------------------
+# Header
+# -----------------------------
+st.markdown('<div class="main-title">🧪 SniffLab</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Fragrance layering made simple.</div>', unsafe_allow_html=True)
 
 if st.session_state.last_added:
     st.toast(f"Added: {st.session_state.last_added}")
     st.session_state.last_added = ""
 
+st.markdown(
+    '<div class="hint-box">On mobile, tap <b>››</b> in the top-left corner anytime to open the menu.</div>',
+    unsafe_allow_html=True
+)
+
 # -----------------------------
-# Sidebar
+# Pages
 # -----------------------------
-with st.sidebar:
-    st.header("My Collection")
+if st.session_state.page == "Home":
+    st.markdown("### Welcome")
+    st.markdown("""
+<div class="hero-box">
+<b>How SniffLab works</b><br><br>
+1. Open <b>Browse</b> and find your fragrances.<br>
+2. Tap <b>➕</b> to add them to your collection.<br>
+3. Open <b>Sniff</b> to get layering ideas.<br>
+4. Use <b>⭐</b> to save things for later.
+</div>
+""", unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    if c1.button("Browse Fragrances"):
+        st.session_state.page = "Browse"
+        st.rerun()
+    if c2.button("Open My Collection"):
+        st.session_state.page = "Collection"
+        st.rerun()
+
+    st.caption("➕ Add  •  ⭐ Save  •  ✕ Remove  •  🛒 Check Price")
+
+elif st.session_state.page == "Browse":
+    st.markdown("### Browse Fragrances")
+
+    quick1, quick2, quick3 = st.columns(3)
+    if quick1.button("Desmirage"):
+        st.session_state.search_query = "desmirage"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+    if quick2.button("Arlyn"):
+        st.session_state.search_query = "arlyn"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+    if quick3.button("Jean Rish"):
+        st.session_state.search_query = "jean rish"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+
+    filter_col1, filter_col2 = st.columns([1, 2])
+    all_brands = sorted(df["brand_pretty"].dropna().unique().tolist())
+
+    with filter_col1:
+        options = ["All Brands"] + all_brands
+        brand_filter = st.selectbox(
+            "Brand",
+            options,
+            index=options.index(st.session_state.brand_filter) if st.session_state.brand_filter in options else 0
+        )
+        st.session_state.brand_filter = brand_filter
+
+    with filter_col2:
+        search_query = st.text_input(
+            "Search",
+            value=st.session_state.search_query,
+            placeholder="Try desmirage, vanilla, cherry, floral..."
+        )
+        st.session_state.search_query = search_query
+
+    filtered_df = df.copy()
+
+    if brand_filter != "All Brands":
+        filtered_df = filtered_df[filtered_df["brand_pretty"] == brand_filter]
+
+    if search_query.strip():
+        q = search_query.strip().lower()
+        filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
+
+    filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
+    filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
+    filtered_df = filtered_df.sort_values(["brand_priority", "brand_pretty", "name_pretty"], ascending=[True, True, True])
+    results_df = filtered_df.head(24)
+
+    if results_df.empty:
+        st.info("No fragrances matched your search.")
+    else:
+        st.caption(f"Showing {len(results_df)} result(s)")
+        for _, row in results_df.iterrows():
+            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+            st.markdown(f'<div class="sniff-name">{row["name_pretty"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="sniff-meta">{row["brand_pretty"]}</div>', unsafe_allow_html=True)
+
+            if row["inspired_by"]:
+                st.markdown(f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>', unsafe_allow_html=True)
+
+            accord_text = ", ".join([x for x in [row["mainaccord1"], row["mainaccord2"], row["mainaccord3"], row["mainaccord4"], row["mainaccord5"]] if x])
+            if accord_text:
+                st.markdown(f'<div class="mini-label">Accords</div><div>{accord_text}</div>', unsafe_allow_html=True)
+
+            b1, b2 = st.columns([1, 1])
+            if b1.button("➕", key=f"add_{row['id']}"):
+                if row["display_name"] not in st.session_state.my_collection:
+                    st.session_state.my_collection.append(row["display_name"])
+                st.session_state.last_added = row["display_name"]
+                st.rerun()
+
+            if b2.button("⭐", key=f"save_{row['id']}"):
+                if row["display_name"] not in st.session_state.sniff_list:
+                    st.session_state.sniff_list.append(row["display_name"])
+                st.rerun()
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+elif st.session_state.page == "Collection":
+    st.markdown("### My Collection")
+
     if st.session_state.my_collection:
-        sidebar_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+        collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+
         for family in ["Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity", "Other"]:
-            family_rows = sidebar_df[sidebar_df["family"] == family]
+            family_rows = collection_df[collection_df["family"] == family]
             if family_rows.empty:
                 continue
-            st.markdown(f"**{family_icon(family)} {family}**")
+
+            st.markdown(f"#### {family_icon(family)} {family}")
             for _, row in family_rows.sort_values("display_name").iterrows():
-                c1, c2 = st.columns([4, 1])
-                c1.write(row["display_name"])
-                if c2.button("✕", key=f"side_remove_{row['display_name']}"):
+                c1, c2 = st.columns([6, 1])
+                c1.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
+                if c2.button("✕", key=f"remove_{row['display_name']}"):
                     st.session_state.my_collection = [x for x in st.session_state.my_collection if x != row["display_name"]]
                     st.rerun()
     else:
-        st.caption("Your collection is empty.")
+        st.info("Your collection is empty.")
 
-    st.divider()
-    st.header("Sniff List")
+elif st.session_state.page == "Sniff":
+    st.markdown("### Sniff")
+
+    sniff_col1, sniff_col2 = st.columns(2)
+
+    with sniff_col1:
+        sniff_mode = st.radio(
+            "Use",
+            ["My Collection Only", "My Collection + Community Fragrances"],
+            index=["My Collection Only", "My Collection + Community Fragrances"].index(st.session_state.sniff_mode)
+        )
+        st.session_state.sniff_mode = sniff_mode
+
+    with sniff_col2:
+        mood = st.selectbox(
+            "Mood",
+            ["Any", "Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity"],
+            index=["Any", "Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity"].index(st.session_state.mood)
+        )
+        st.session_state.mood = mood
+
+    st.caption("Tap 🧪 to generate layering ideas from what you own.")
+
+    if st.button("🧪 Sniff", type="primary"):
+        collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+
+        if collection_df.empty:
+            st.warning("Add at least one fragrance to My Collection first.")
+        else:
+            pool_df = collection_df.copy() if sniff_mode == "My Collection Only" else df.copy()
+            results = []
+            seen = set()
+
+            for _, a in collection_df.iterrows():
+                for _, b in pool_df.iterrows():
+                    if a["display_name"] == b["display_name"]:
+                        continue
+
+                    key = tuple(sorted([a["display_name"], b["display_name"]]))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    results.append({
+                        "a": a,
+                        "b": b,
+                        "score": combo_score(a, b, mood),
+                        "combo_name": combo_name(a, b),
+                        "description": combo_description(a, b),
+                        "key": f"{key[0]}|||{key[1]}"
+                    })
+
+            st.session_state.latest_combos = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
+
+    if st.session_state.latest_combos:
+        st.markdown("#### Your Layering Suggestions")
+
+        for combo in st.session_state.latest_combos:
+            a = combo["a"]
+            b = combo["b"]
+            combo_key = combo["key"]
+            saved_rating = st.session_state.combo_ratings.get(combo_key, "unreviewed")
+
+            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+            st.markdown(f'<div class="sniff-name">{combo["combo_name"]}</div>', unsafe_allow_html=True)
+            st.write(f"**Layer:** {a['display_name']} + {b['display_name']}")
+            st.write(f"**Why it may work:** {combo['description']}")
+            st.write(f"**Mood fit score:** {combo['score']}")
+            st.write(f"**Current rating:** {saved_rating.title() if saved_rating != 'unreviewed' else 'Unreviewed'}")
+            st.caption("Suggested use: 2 sprays of the richer scent on chest, 1 spray of the brighter scent on neck or shirt.")
+
+            r1, r2, r3, r4, r5, r6 = st.columns([1, 1, 1, 1, 1, 1])
+
+            if r1.button("🚀", key=f"amazing_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "amazing"
+                st.rerun()
+            if r2.button("👌", key=f"good_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "good"
+                st.rerun()
+            if r3.button("😐", key=f"neutral_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "neutral"
+                st.rerun()
+            if r4.button("🤢", key=f"barf_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "barf"
+                st.rerun()
+            if r5.button("⭐", key=f"combo_save_{combo_key}"):
+                if b["display_name"] not in st.session_state.sniff_list:
+                    st.session_state.sniff_list.append(b["display_name"])
+                st.rerun()
+
+            r6.link_button("🛒", amazon_search_link(b["name_pretty"]))
+            st.markdown("</div>", unsafe_allow_html=True)
+
+elif st.session_state.page == "Saved":
+    st.markdown("### Sniff List")
+
     if st.session_state.sniff_list:
         for item in st.session_state.sniff_list:
-            st.write(item)
-    else:
-        st.caption("Nothing saved yet.")
-
-    st.divider()
-    st.caption("As an Amazon Associate I earn from qualifying purchases.")
-
-# -----------------------------
-# My Collection first
-# -----------------------------
-st.markdown("## My Collection")
-
-if st.session_state.my_collection:
-    collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
-    for family in ["Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity", "Other"]:
-        family_rows = collection_df[collection_df["family"] == family]
-        if family_rows.empty:
-            continue
-        st.markdown(f"### {family_icon(family)} {family}")
-        for _, row in family_rows.sort_values("display_name").iterrows():
             c1, c2 = st.columns([6, 1])
-            c1.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
-            if c2.button("✕", key=f"main_remove_{row['display_name']}"):
-                st.session_state.my_collection = [x for x in st.session_state.my_collection if x != row["display_name"]]
+            c1.markdown(f'<div class="collection-chip"><b>{item}</b></div>', unsafe_allow_html=True)
+            if c2.button("✕", key=f"saved_remove_{item}"):
+                st.session_state.sniff_list = [x for x in st.session_state.sniff_list if x != item]
                 st.rerun()
-else:
-    st.info("You have not added any fragrances yet.")
-
-# -----------------------------
-# Add fragrances
-# -----------------------------
-st.markdown("## Add Fragrances")
-
-quick1, quick2, quick3 = st.columns(3)
-if quick1.button("Desmirage"):
-    st.session_state.search_query = "desmirage"
-    st.session_state.brand_filter = "All Brands"
-if quick2.button("Arlyn"):
-    st.session_state.search_query = "arlyn"
-    st.session_state.brand_filter = "All Brands"
-if quick3.button("Jean Rish"):
-    st.session_state.search_query = "jean rish"
-    st.session_state.brand_filter = "All Brands"
-
-filter_col1, filter_col2 = st.columns([1, 2])
-all_brands = sorted(df["brand_pretty"].dropna().unique().tolist())
-
-with filter_col1:
-    brand_filter = st.selectbox(
-        "Brand",
-        ["All Brands"] + all_brands,
-        index=(["All Brands"] + all_brands).index(st.session_state.brand_filter) if st.session_state.brand_filter in (["All Brands"] + all_brands) else 0
-    )
-    st.session_state.brand_filter = brand_filter
-
-with filter_col2:
-    search_query = st.text_input(
-        "Search fragrance, brand, notes, or inspiration",
-        value=st.session_state.search_query,
-        placeholder="Try desmirage, vanilla, cherry, floral..."
-    )
-    st.session_state.search_query = search_query
-
-filtered_df = df.copy()
-
-if brand_filter != "All Brands":
-    filtered_df = filtered_df[filtered_df["brand_pretty"] == brand_filter]
-
-if search_query.strip():
-    q = search_query.strip().lower()
-    filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
-
-filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
-filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
-filtered_df = filtered_df.sort_values(["brand_priority", "brand_pretty", "name_pretty"], ascending=[True, True, True])
-results_df = filtered_df.head(24)
-
-if results_df.empty:
-    st.info("No fragrances matched your search.")
-else:
-    st.caption(f"Showing {len(results_df)} result(s)")
-    for _, row in results_df.iterrows():
-        st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="sniff-name">{row["name_pretty"]}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="sniff-meta">{row["brand_pretty"]}</div>', unsafe_allow_html=True)
-
-        if row["inspired_by"]:
-            st.markdown(f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>', unsafe_allow_html=True)
-
-        accord_text = ", ".join([x for x in [row["mainaccord1"], row["mainaccord2"], row["mainaccord3"], row["mainaccord4"], row["mainaccord5"]] if x])
-        if accord_text:
-            st.markdown(f'<div class="mini-label">Accords</div><div>{accord_text}</div>', unsafe_allow_html=True)
-
-        c1, c2 = st.columns([1, 1])
-
-        if c1.button("➕", key=f"add_{row['id']}"):
-            if row["display_name"] not in st.session_state.my_collection:
-                st.session_state.my_collection.append(row["display_name"])
-            st.session_state.last_added = row["display_name"]
-            st.rerun()
-
-        if c2.button("⭐", key=f"wish_{row['id']}"):
-            if row["display_name"] not in st.session_state.sniff_list:
-                st.session_state.sniff_list.append(row["display_name"])
-            st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# -----------------------------
-# Sniff
-# -----------------------------
-st.markdown("## Sniff")
-
-sniff_col1, sniff_col2 = st.columns(2)
-
-with sniff_col1:
-    sniff_mode = st.radio(
-        "Use",
-        ["My Collection Only", "My Collection + Community Fragrances"]
-    )
-
-with sniff_col2:
-    mood = st.selectbox(
-        "Mood",
-        ["Any", "Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity"]
-    )
-
-st.caption("Start with My Collection Only for the easiest results.")
-
-if st.button("🧪 Sniff", type="primary"):
-    collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
-
-    if collection_df.empty:
-        st.warning("Add at least one fragrance to My Collection first.")
     else:
-        pool_df = collection_df.copy() if sniff_mode == "My Collection Only" else df.copy()
-
-        results = []
-        seen = set()
-
-        for _, a in collection_df.iterrows():
-            for _, b in pool_df.iterrows():
-                if a["display_name"] == b["display_name"]:
-                    continue
-
-                key = tuple(sorted([a["display_name"], b["display_name"]]))
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                results.append({
-                    "a": a,
-                    "b": b,
-                    "score": combo_score(a, b, mood),
-                    "combo_name": combo_name(a, b),
-                    "description": combo_description(a, b),
-                    "key": f"{key[0]}|||{key[1]}"
-                })
-
-        st.session_state.latest_combos = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
-
-# -----------------------------
-# Results
-# -----------------------------
-if st.session_state.latest_combos:
-    st.markdown("## Your Layering Suggestions")
-
-    for combo in st.session_state.latest_combos:
-        a = combo["a"]
-        b = combo["b"]
-        combo_key = combo["key"]
-        saved_rating = st.session_state.combo_ratings.get(combo_key, "unreviewed")
-
-        st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
-        st.markdown(f'<div class="sniff-name">{combo["combo_name"]}</div>', unsafe_allow_html=True)
-        st.write(f"**Layer:** {a['display_name']} + {b['display_name']}")
-        st.write(f"**Why it may work:** {combo['description']}")
-        st.write(f"**Mood fit score:** {combo['score']}")
-        st.write(f"**Current rating:** {saved_rating.title() if saved_rating != 'unreviewed' else 'Unreviewed'}")
-        st.caption("Suggested use: 2 sprays of the richer scent on chest, 1 spray of the brighter scent on neck or shirt.")
-
-        r1, r2, r3, r4, r5, r6 = st.columns([1, 1, 1, 1, 1, 1])
-
-        if r1.button("🚀", key=f"amazing_{combo_key}"):
-            st.session_state.combo_ratings[combo_key] = "amazing"
-            st.rerun()
-        if r2.button("👌", key=f"good_{combo_key}"):
-            st.session_state.combo_ratings[combo_key] = "good"
-            st.rerun()
-        if r3.button("😐", key=f"neutral_{combo_key}"):
-            st.session_state.combo_ratings[combo_key] = "neutral"
-            st.rerun()
-        if r4.button("🤢", key=f"barf_{combo_key}"):
-            st.session_state.combo_ratings[combo_key] = "barf"
-            st.rerun()
-        if r5.button("⭐", key=f"save_combo_{combo_key}"):
-            if b["display_name"] not in st.session_state.sniff_list:
-                st.session_state.sniff_list.append(b["display_name"])
-            st.rerun()
-
-        r6.link_button("🛒", amazon_search_link(b["name_pretty"]))
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.info("Nothing saved yet.")
