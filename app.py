@@ -133,6 +133,10 @@ if theme is not None:
             color: {theme['text']};
         }}
 
+        html, body, [class*="css"] {{
+            color: {theme['text']};
+        }}
+
         .main-title {{
             font-size: 2rem;
             font-weight: 800;
@@ -189,6 +193,7 @@ if theme is not None:
             border-radius: 12px;
             padding: 10px 12px;
             margin-bottom: 8px;
+            color: {theme['text']};
         }}
 
         .hero-box {{
@@ -197,6 +202,7 @@ if theme is not None:
             border-radius: 20px;
             padding: 16px;
             margin-bottom: 14px;
+            color: {theme['text']};
         }}
 
         .small-note {{
@@ -208,35 +214,82 @@ if theme is not None:
            BUTTONS
            ========================= */
         div.stButton > button {{
+            background: {theme['button_bg']} !important;
             background-color: {theme['button_bg']} !important;
             color: {theme['button_text']} !important;
             border: 1px solid {theme['border']} !important;
             border-radius: 12px !important;
             min-height: 44px !important;
             font-size: 18px !important;
+            font-weight: 700 !important;
             box-shadow: none !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
+            opacity: 1 !important;
         }}
 
+        div.stButton > button *,
         div.stButton > button p,
         div.stButton > button span,
         div.stButton > button div {{
             color: {theme['button_text']} !important;
+            fill: {theme['button_text']} !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
+            opacity: 1 !important;
         }}
 
         div.stButton > button:hover {{
+            background: {theme['button_hover_bg']} !important;
             background-color: {theme['button_hover_bg']} !important;
             color: {theme['button_hover_text']} !important;
             border-color: {theme['button_hover_bg']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
         }}
 
+        div.stButton > button:hover *,
         div.stButton > button:hover p,
         div.stButton > button:hover span,
         div.stButton > button:hover div {{
             color: {theme['button_hover_text']} !important;
+            fill: {theme['button_hover_text']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
+            opacity: 1 !important;
+        }}
+
+        div.stButton > button[kind="primary"] {{
+            background: {theme['accent']} !important;
+            background-color: {theme['accent']} !important;
+            color: {theme['button_text']} !important;
+            border-color: {theme['accent']} !important;
+            font-weight: 800 !important;
+            -webkit-text-fill-color: {theme['button_text']} !important;
+        }}
+
+        div.stButton > button[kind="primary"] *,
+        div.stButton > button[kind="primary"] p,
+        div.stButton > button[kind="primary"] span,
+        div.stButton > button[kind="primary"] div {{
+            color: {theme['button_text']} !important;
+            fill: {theme['button_text']} !important;
+            -webkit-text-fill-color: {theme['button_text']} !important;
+            opacity: 1 !important;
+        }}
+
+        div.stButton > button[kind="primary"]:hover {{
+            background: {theme['button_hover_bg']} !important;
+            background-color: {theme['button_hover_bg']} !important;
+            color: {theme['button_hover_text']} !important;
+            border-color: {theme['button_hover_bg']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
+
+        div.stButton > button[kind="primary"]:hover *,
+        div.stButton > button[kind="primary"]:hover p,
+        div.stButton > button[kind="primary"]:hover span,
+        div.stButton > button[kind="primary"]:hover div {{
+            color: {theme['button_hover_text']} !important;
+            fill: {theme['button_hover_text']} !important;
+            -webkit-text-fill-color: {theme['button_hover_text']} !important;
+            opacity: 1 !important;
         }}
 
         /* =========================
@@ -255,11 +308,19 @@ if theme is not None:
             -webkit-text-fill-color: {theme['text']} !important;
         }}
 
+        /* Dropdown text */
+        div[data-baseweb="select"] span,
+        div[data-baseweb="select"] div {{
+            color: {theme['text']} !important;
+            -webkit-text-fill-color: {theme['text']} !important;
+        }}
+
         /* =========================
            LINK BUTTONS
            ========================= */
         .stLinkButton a {{
-            background-color: {theme['card']} !important;
+            background: {theme['button_bg']} !important;
+            background-color: {theme['button_bg']} !important;
             color: {theme['button_text']} !important;
             border: 1px solid {theme['border']} !important;
             border-radius: 12px !important;
@@ -268,14 +329,28 @@ if theme is not None:
             align-items: center !important;
             justify-content: center !important;
             text-decoration: none !important;
+            font-weight: 700 !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
         }}
 
         .stLinkButton a:hover {{
-            background-color: {theme['accent']} !important;
+            background: {theme['button_hover_bg']} !important;
+            background-color: {theme['button_hover_bg']} !important;
             color: {theme['button_hover_text']} !important;
-            border-color: {theme['accent']} !important;
+            border-color: {theme['button_hover_bg']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
+        }}
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {{
+            background: {theme['card']};
+            border-right: 1px solid {theme['border']};
+        }}
+
+        /* Mobile spacing */
+        .block-container {{
+            padding-top: 0.8rem;
+            padding-bottom: 4rem;
         }}
     </style>
     """, unsafe_allow_html=True)
