@@ -734,19 +734,61 @@ elif st.session_state.page == "Browse":
         st.info("No fragrances matched your search.")
     else:
         st.caption(f"Showing {len(results_df)} result(s)")
+
         for _, row in results_df.iterrows():
+            accords = [x for x in [
+                row["mainaccord1"],
+                row["mainaccord2"],
+                row["mainaccord3"],
+                row["mainaccord4"],
+                row["mainaccord5"],
+            ] if x]
+
+            top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
+            middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
+            base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
+            accord_text = ", ".join(accords) if accords else "—"
+
             st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
-            st.markdown(f'<div class="sniff-name">{row["name_pretty"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="sniff-meta">{row["brand_pretty"]}</div>', unsafe_allow_html=True)
+
+            st.markdown(
+                f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]}</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f'<div class="sniff-meta"><b>{row["brand_pretty"]}</b></div>',
+                unsafe_allow_html=True
+            )
 
             if row["inspired_by"]:
-                st.markdown(f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>',
+                    unsafe_allow_html=True
+                )
 
-            accord_text = ", ".join([x for x in [row["mainaccord1"], row["mainaccord2"], row["mainaccord3"], row["mainaccord4"], row["mainaccord5"]] if x])
-            if accord_text:
-                st.markdown(f'<div class="mini-label">Accords</div><div>{accord_text}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="mini-label">Family</div><div>{row["family"]}</div>',
+                unsafe_allow_html=True
+            )
 
-            b1, b2 = st.columns(2)
+            st.markdown(
+                f'<div class="mini-label">Top Notes</div><div>{top_notes}</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f'<div class="mini-label">Middle Notes</div><div>{middle_notes}</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f'<div class="mini-label">Base Notes</div><div>{base_notes}</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                f'<div class="mini-label">Accords</div><div>{accord_text}</div>',
+                unsafe_allow_html=True
+            )
+
+            b1, b2, b3 = st.columns(3)
 
             if b1.button("➕", key=f"add_{row['id']}"):
                 if row["display_name"] not in st.session_state.my_collection:
@@ -758,6 +800,8 @@ elif st.session_state.page == "Browse":
                 if row["display_name"] not in st.session_state.sniff_list:
                     st.session_state.sniff_list.append(row["display_name"])
                 st.rerun()
+
+            b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
 
             st.markdown("</div>", unsafe_allow_html=True)
 
