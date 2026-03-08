@@ -149,19 +149,18 @@ if theme is not None:
             margin-bottom: 10px;
         }}
 
-        .sniff-name {{
+        .sniff-name {{}
             font-size: 1.05rem;
             font-weight: 700;
             color: {theme['text']};
             margin-bottom: 0.2rem;
         }}
 
-        .sniff-meta {{
-            color: {theme['muted']};
-            font-size: 0.92rem;
-            margin-bottom: 0.35rem;
+        .sniff-name .sniff-meta {{
+            font-size: 0.95rem;
+            font-weight: 500;
+            opacity: 0.85;
         }}
-
         .mini-label {{
             color: {theme['muted']};
             font-size: 0.82rem;
@@ -730,80 +729,69 @@ elif st.session_state.page == "Browse":
 
     results_df = filtered_df.head(30)
 
-    if results_df.empty:
-        st.info("No fragrances matched your search.")
-    else:
-        st.caption(f"Showing {len(results_df)} result(s)")
+if results_df.empty:
+    st.info("No fragrances matched your search.")
+else:
+    st.caption(f"Showing {len(results_df)} result(s)")
 
-        for _, row in results_df.iterrows():
-            accords = [x for x in [
-                row["mainaccord1"],
-                row["mainaccord2"],
-                row["mainaccord3"],
-                row["mainaccord4"],
-                row["mainaccord5"],
-            ] if x]
+    for _, row in results_df.iterrows():
+        accords = [x for x in [
+            row["mainaccord1"],
+            row["mainaccord2"],
+            row["mainaccord3"],
+            row["mainaccord4"],
+            row["mainaccord5"],
+        ] if x]
 
-            top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
-            middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
-            base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
-            accord_text = ", ".join(accords) if accords else "—"
+        top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
+        middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
+        base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
+        accord_text = " • ".join(accords[:4]) if accords else "—"
 
-            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+        st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
 
+        # Main compact header
+        st.markdown(
+            f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]} <span class="sniff-meta">| {row["brand_pretty"]}</span></div>',
+            unsafe_allow_html=True
+        )
+
+        # Inspiration
+        if row["inspired_by"]:
             st.markdown(
-                f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]}</div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                f'<div class="sniff-meta"><b>{row["brand_pretty"]}</b></div>',
-                unsafe_allow_html=True
-            )
-
-            if row["inspired_by"]:
-                st.markdown(
-                    f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>',
-                    unsafe_allow_html=True
-                )
-
-            st.markdown(
-                f'<div class="mini-label">Family</div><div>{row["family"]}</div>',
+                f'<div><span class="mini-label">Inspired By</span><br>{row["inspired_by"]}</div>',
                 unsafe_allow_html=True
             )
 
-            st.markdown(
-                f'<div class="mini-label">Top Notes</div><div>{top_notes}</div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                f'<div class="mini-label">Middle Notes</div><div>{middle_notes}</div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                f'<div class="mini-label">Base Notes</div><div>{base_notes}</div>',
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                f'<div class="mini-label">Accords</div><div>{accord_text}</div>',
-                unsafe_allow_html=True
-            )
+        # Family + accords in a cleaner long-form line
+        st.markdown(
+            f'<div style="margin-top:8px;"><span class="mini-label">Profile</span><br>{row["family"]} | {accord_text}</div>',
+            unsafe_allow_html=True
+        )
 
-            b1, b2, b3 = st.columns(3)
+        # Buttons
+        b1, b2, b3 = st.columns(3)
 
-            if b1.button("➕", key=f"add_{row['id']}"):
-                if row["display_name"] not in st.session_state.my_collection:
-                    st.session_state.my_collection.append(row["display_name"])
-                st.session_state.last_added = row["display_name"]
-                st.rerun()
+        if b1.button("➕", key=f"add_{row['id']}"):
+            if row["display_name"] not in st.session_state.my_collection:
+                st.session_state.my_collection.append(row["display_name"])
+            st.session_state.last_added = row["display_name"]
+            st.rerun()
 
-            if b2.button("⭐", key=f"save_frag_{row['id']}"):
-                if row["display_name"] not in st.session_state.sniff_list:
-                    st.session_state.sniff_list.append(row["display_name"])
-                st.rerun()
+        if b2.button("⭐", key=f"save_frag_{row['id']}"):
+            if row["display_name"] not in st.session_state.sniff_list:
+                st.session_state.sniff_list.append(row["display_name"])
+            st.rerun()
 
-            b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
+        b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
 
-            st.markdown("</div>", unsafe_allow_html=True)
+        # Optional details
+        with st.expander("More details"):
+            st.markdown(f"**Top Notes**  \n{top_notes}")
+            st.markdown(f"**Middle Notes**  \n{middle_notes}")
+            st.markdown(f"**Base Notes**  \n{base_notes}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================================================
 # PAGE: COLLECTION
