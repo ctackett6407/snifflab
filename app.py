@@ -205,7 +205,7 @@ if theme is not None:
         /* =========================
            BUTTONS
            ========================= */
-        div.stButton > button {{}
+        div.stButton > button {{
             background-color: {theme['button_bg']} !important;
             color: {theme['button_text']} !important;
             border: 1px solid {theme['border']} !important;
@@ -218,39 +218,24 @@ if theme is not None:
 
         div.stButton > button p,
         div.stButton > button span,
-        div.stButton > button div {
+        div.stButton > button div {{
             color: {theme['button_text']} !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
-        }
+        }}
 
-        div.stButton > button:hover {
+        div.stButton > button:hover {{
             background-color: {theme['button_hover_bg']} !important;
             color: {theme['button_hover_text']} !important;
             border-color: {theme['button_hover_bg']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }
+        }}
 
         div.stButton > button:hover p,
         div.stButton > button:hover span,
-        div.stButton > button:hover div {
+        div.stButton > button:hover div {{
             color: {theme['button_hover_text']} !important;
             -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }
-
-        div.stButton > button[kind="primary"] {
-            background-color: {theme['accent']} !important;
-            color: {theme['button_hover_text']} !important;
-            border-color: {theme['accent']} !important;
-            font-weight: 700 !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }
-
-        div.stButton > button[kind="primary"] p,
-        div.stButton > button[kind="primary"] span,
-        div.stButton > button[kind="primary"] div {
-            color: {theme['button_hover_text']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }
+        }}
 
         /* =========================
            INPUTS / SELECTS
