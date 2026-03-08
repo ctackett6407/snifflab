@@ -1,17 +1,14 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
+import random
 
 # =========================================================
 # SNIFFLAB CONFIG
 # =========================================================
-# Main catalog file the app reads from
 CSV_PATH = "data/fragrances_master.csv"
-
-# Amazon affiliate tag for product search links
 AFFILIATE_TAG = "christacket04-20"
 
-# Basic Streamlit page config
 st.set_page_config(
     page_title="SniffLab",
     page_icon="🧪",
@@ -22,9 +19,8 @@ st.set_page_config(
 # =========================================================
 # THEME PRESETS
 # =========================================================
-# "System Default" means no custom CSS theme is applied.
-# The others apply a full preset color style across cards,
-# buttons, chips, text, and inputs.
+# These themes now control page/card/text styling only.
+# Buttons are left to Streamlit's native theme system.
 THEMES = {
     "System Default": None,
     "Midnight": {
@@ -34,10 +30,7 @@ THEMES = {
         "muted": "#9CA3AF",
         "accent": "#8B5CF6",
         "border": "#374151",
-        "button_bg": "#111827",
-        "button_text": "#F9FAFB",
-        "button_hover_bg": "#8B5CF6",
-        "button_hover_text": "#050816",
+        "sidebar_bg": "#0B1020",
     },
     "Monochrome": {
         "bg": "#111111",
@@ -46,24 +39,17 @@ THEMES = {
         "muted": "#BDBDBD",
         "accent": "#E5E7EB",
         "border": "#444444",
-        "button_bg": "#1F1F1F",
-        "button_text": "#F5F5F5",
-        "button_hover_bg": "#E5E7EB",
-        "button_hover_text": "#111111",
+        "sidebar_bg": "#191919",
     },
     "Pink Pretty": {
-        "bg": "#FFF0F8",
-        "card": "#FFD9EE",
+        "bg": "#FFF5FB",
+        "card": "#FFE0F1",
         "text": "#4A1030",
         "muted": "#9C4A76",
         "accent": "#FF2DAA",
-        "border": "#FF7FC4",
-        "button_bg": "#A1005A",
-        "button_text": "#FFFFFF",
-        "button_hover_bg": "#6F003D",
-        "button_hover_text": "#FFFFFF",
+        "border": "#F39ACB",
+        "sidebar_bg": "#FFD9EE",
     },
-
     "Rainbow Pop": {
         "bg": "#FFF8FF",
         "card": "#FFF0FB",
@@ -71,29 +57,26 @@ THEMES = {
         "muted": "#7A5A9A",
         "accent": "#FF4FD8",
         "border": "#9B5CFF",
-        "button_bg": "#4C00B8",
-        "button_text": "#FFFFFF",
-        "button_hover_bg": "#D1006C",
-        "button_hover_text": "#FFFFFF",
+        "sidebar_bg": "#FFE8FF",
     },
 }
 
 # =========================================================
 # SESSION STATE DEFAULTS
 # =========================================================
-# These keep the app stateful during a session so the user
-# can browse, add, sniff, and save without losing progress.
 if "theme_name" not in st.session_state:
     st.session_state.theme_name = "System Default"
 
 if "page" not in st.session_state:
     st.session_state.page = "Home"
 
-if "my_collection" not in st.session_state:
-    st.session_state.my_collection = []
+# Store collection by stable fragrance id
+if "my_collection_ids" not in st.session_state:
+    st.session_state.my_collection_ids = []
 
-if "sniff_list" not in st.session_state:
-    st.session_state.sniff_list = []
+# Store saved combo keys
+if "saved_combo_keys" not in st.session_state:
+    st.session_state.saved_combo_keys = []
 
 if "combo_ratings" not in st.session_state:
     st.session_state.combo_ratings = {}
@@ -116,14 +99,22 @@ if "sniff_mode" not in st.session_state:
 if "mood" not in st.session_state:
     st.session_state.mood = "Any"
 
-# Current active theme preset
+if "layer_count" not in st.session_state:
+    st.session_state.layer_count = 2
+
+if "spray_style" not in st.session_state:
+    st.session_state.spray_style = "Moderate"
+
+if "vibe" not in st.session_state:
+    st.session_state.vibe = "Any"
+
 theme = THEMES[st.session_state.theme_name]
 
 # =========================================================
 # GLOBAL APP STYLING
 # =========================================================
-# If the user selects "System Default", this CSS block is skipped
-# so the app uses normal Streamlit styling.
+# Buttons are intentionally NOT custom styled here.
+# We let Streamlit handle button contrast natively.
 if theme is not None:
     st.markdown(f"""
     <style>
@@ -134,6 +125,11 @@ if theme is not None:
 
         html, body, [class*="css"] {{
             color: {theme['text']};
+        }}
+
+        .block-container {{
+            padding-top: 0.8rem;
+            padding-bottom: 4rem;
         }}
 
         .main-title {{
@@ -164,7 +160,7 @@ if theme is not None:
             border: 1px solid {theme['border']};
             border-radius: 18px;
             padding: 14px;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }}
 
         .sniff-name {{
@@ -209,91 +205,18 @@ if theme is not None:
             font-size: 0.86rem;
         }}
 
-        /* =========================
-           BUTTONS
-           ========================= */
-        div.stButton > button {{
-            background: {theme['button_bg']} !important;
-            background-color: {theme['button_bg']} !important;
-            color: {theme['button_text']} !important;
-            border: 1px solid {theme['border']} !important;
-            border-radius: 12px !important;
-            min-height: 44px !important;
-            font-size: 18px !important;
-            font-weight: 700 !important;
-            box-shadow: none !important;
-            -webkit-text-fill-color: {theme['button_text']} !important;
-            opacity: 1 !important;
+        .combo-badge {{
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: {theme['bg']};
+            border: 1px solid {theme['border']};
+            color: {theme['text']};
+            font-size: 0.78rem;
+            margin-right: 6px;
+            margin-bottom: 6px;
         }}
 
-        div.stButton > button *,
-        div.stButton > button p,
-        div.stButton > button span,
-        div.stButton > button div {{
-            color: {theme['button_text']} !important;
-            fill: {theme['button_text']} !important;
-            -webkit-text-fill-color: {theme['button_text']} !important;
-            opacity: 1 !important;
-        }}
-
-        div.stButton > button:hover {{
-            background: {theme['button_hover_bg']} !important;
-            background-color: {theme['button_hover_bg']} !important;
-            color: {theme['button_hover_text']} !important;
-            border-color: {theme['button_hover_bg']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
-
-        div.stButton > button:hover *,
-        div.stButton > button:hover p,
-        div.stButton > button:hover span,
-        div.stButton > button:hover div {{
-            color: {theme['button_hover_text']} !important;
-            fill: {theme['button_hover_text']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-            opacity: 1 !important;
-        }}
-
-        div.stButton > button[kind="primary"] {{
-            background: {theme['accent']} !important;
-            background-color: {theme['accent']} !important;
-            color: {theme['button_text']} !important;
-            border-color: {theme['accent']} !important;
-            font-weight: 800 !important;
-            -webkit-text-fill-color: {theme['button_text']} !important;
-        }}
-
-        div.stButton > button[kind="primary"] *,
-        div.stButton > button[kind="primary"] p,
-        div.stButton > button[kind="primary"] span,
-        div.stButton > button[kind="primary"] div {{
-            color: {theme['button_text']} !important;
-            fill: {theme['button_text']} !important;
-            -webkit-text-fill-color: {theme['button_text']} !important;
-            opacity: 1 !important;
-        }}
-
-        div.stButton > button[kind="primary"]:hover {{
-            background: {theme['button_hover_bg']} !important;
-            background-color: {theme['button_hover_bg']} !important;
-            color: {theme['button_hover_text']} !important;
-            border-color: {theme['button_hover_bg']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
-
-        div.stButton > button[kind="primary"]:hover *,
-        div.stButton > button[kind="primary"]:hover p,
-        div.stButton > button[kind="primary"]:hover span,
-        div.stButton > button[kind="primary"]:hover div {{
-            color: {theme['button_hover_text']} !important;
-            fill: {theme['button_hover_text']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-            opacity: 1 !important;
-        }}
-
-        /* =========================
-           INPUTS / SELECTS
-           ========================= */
         div[data-baseweb="select"] > div,
         div[data-baseweb="input"] > div {{
             background-color: {theme['card']} !important;
@@ -307,49 +230,15 @@ if theme is not None:
             -webkit-text-fill-color: {theme['text']} !important;
         }}
 
-        /* Dropdown text */
         div[data-baseweb="select"] span,
         div[data-baseweb="select"] div {{
             color: {theme['text']} !important;
             -webkit-text-fill-color: {theme['text']} !important;
         }}
 
-        /* =========================
-           LINK BUTTONS
-           ========================= */
-        .stLinkButton a {{
-            background: {theme['button_bg']} !important;
-            background-color: {theme['button_bg']} !important;
-            color: {theme['button_text']} !important;
-            border: 1px solid {theme['border']} !important;
-            border-radius: 12px !important;
-            min-height: 44px !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            text-decoration: none !important;
-            font-weight: 700 !important;
-            -webkit-text-fill-color: {theme['button_text']} !important;
-        }}
-
-        .stLinkButton a:hover {{
-            background: {theme['button_hover_bg']} !important;
-            background-color: {theme['button_hover_bg']} !important;
-            color: {theme['button_hover_text']} !important;
-            border-color: {theme['button_hover_bg']} !important;
-            -webkit-text-fill-color: {theme['button_hover_text']} !important;
-        }}
-
-        /* Sidebar */
         section[data-testid="stSidebar"] {{
-            background: {theme['card']};
+            background: {theme['sidebar_bg']};
             border-right: 1px solid {theme['border']};
-        }}
-
-        /* Mobile spacing */
-        .block-container {{
-            padding-top: 0.8rem;
-            padding-bottom: 4rem;
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -374,10 +263,10 @@ def load_fragrances():
             return []
         return [x.strip() for x in str(value).split(";") if x.strip()]
 
+    def clean_accord(value: str) -> str:
+        return str(value).replace(",", " ").strip().lower()
+
     def infer_family(row):
-        """
-        Lightweight family detection for grouping collection items.
-        """
         text = " ".join([
             str(row.get("mainaccord1", "")),
             str(row.get("mainaccord2", "")),
@@ -389,7 +278,7 @@ def load_fragrances():
             str(row.get("base_notes", "")),
         ]).lower()
 
-        if any(x in text for x in ["gourmand", "sweet", "vanilla", "dessert", "marzipan", "milky", "caramel", "chocolate"]):
+        if any(x in text for x in ["gourmand", "sweet", "vanilla", "dessert", "marzipan", "milky", "caramel", "chocolate", "praline"]):
             return "Gourmand"
         if any(x in text for x in ["floral", "rose", "jasmine", "orange blossom", "neroli", "iris", "peony", "tuberose"]):
             return "Floral"
@@ -401,9 +290,20 @@ def load_fragrances():
             return "Fruity"
         return "Other"
 
+    # Friendly display columns
     df["name_pretty"] = df["name"].apply(pretty_text)
     df["brand_pretty"] = df["brand"].apply(pretty_text)
     df["display_name"] = df["name_pretty"] + " — " + df["brand_pretty"]
+
+    # Search blob
+    search_cols = [
+        "name", "brand", "inspired_by", "top_notes", "middle_notes",
+        "base_notes", "mainaccord1", "mainaccord2", "mainaccord3",
+        "mainaccord4", "mainaccord5"
+    ]
+    for col in search_cols:
+        if col not in df.columns:
+            df[col] = ""
 
     df["search_text"] = (
         df["name"].str.lower() + " " +
@@ -419,17 +319,20 @@ def load_fragrances():
         df["mainaccord5"].str.lower()
     )
 
+    # Notes
     df["top_list"] = df["top_notes"].apply(split_notes)
     df["middle_list"] = df["middle_notes"].apply(split_notes)
     df["base_list"] = df["base_notes"].apply(split_notes)
 
+    # Accords
     df["accords"] = df[
         ["mainaccord1", "mainaccord2", "mainaccord3", "mainaccord4", "mainaccord5"]
     ].apply(
-        lambda row: [x.strip().lower() for x in row.tolist() if str(x).strip()],
+        lambda row: [clean_accord(x) for x in row.tolist() if str(x).strip()],
         axis=1
     )
 
+    # Flatten notes
     df["all_notes"] = df.apply(
         lambda row: list(dict.fromkeys(row["top_list"] + row["middle_list"] + row["base_list"])),
         axis=1
@@ -456,77 +359,258 @@ def family_icon(family):
     }.get(family, "🧪")
 
 
-def combo_score(a, b, mood):
+def get_collection_df(df: pd.DataFrame) -> pd.DataFrame:
+    return df[df["id"].isin(st.session_state.my_collection_ids)].copy()
+
+
+def note_set(row):
+    return set([x.lower().strip() for x in row["all_notes"] if str(x).strip()])
+
+
+def accord_set(row):
+    return set([x.lower().strip() for x in row["accords"] if str(x).strip()])
+
+
+def fragrance_role(row):
     """
-    Very lightweight pairing score based on shared accords,
-    shared notes, and a few simple bonus rules.
+    Assign a rough role to a fragrance in a layering stack.
     """
-    accords_a = set(a["accords"])
-    accords_b = set(b["accords"])
-    notes_a = set([x.lower() for x in a["all_notes"]])
-    notes_b = set([x.lower() for x in b["all_notes"]])
+    accords = accord_set(row)
+    notes = note_set(row)
+    text = " ".join(list(accords | notes))
 
-    shared_accords = accords_a & accords_b
-    shared_notes = notes_a & notes_b
-    score = len(shared_accords) * 3 + len(shared_notes) * 1.5
+    if any(x in text for x in ["citrus", "bergamot", "lemon", "grapefruit", "marine", "mint", "fresh", "aquatic"]):
+        return "Lift"
+    if any(x in text for x in ["rose", "jasmine", "orange blossom", "neroli", "iris", "floral", "fruity", "pear", "peach", "cherry", "lychee"]):
+        return "Heart"
+    if any(x in text for x in ["amber", "vanilla", "musk", "woody", "oud", "tobacco", "sandalwood", "patchouli", "sweet", "gourmand"]):
+        return "Anchor"
+    return "Support"
 
-    combined_text = " ".join(list(accords_a | accords_b) + list(notes_a | notes_b))
 
-    bonus_pairs = [
+def layering_style_summary(rows):
+    """
+    Determine the overall vibe family of a combo.
+    """
+    all_accords = set().union(*[accord_set(r) for r in rows]) if rows else set()
+    all_notes = set().union(*[note_set(r) for r in rows]) if rows else set()
+    text = " ".join(list(all_accords) + list(all_notes))
+
+    if any(x in text for x in ["gourmand", "vanilla", "caramel", "sweet", "dessert", "chocolate", "praline"]):
+        return "Sweet"
+    if any(x in text for x in ["fresh", "marine", "citrus", "bergamot", "mint", "aquatic"]):
+        return "Fresh"
+    if any(x in text for x in ["rose", "jasmine", "orange blossom", "neroli", "floral", "iris"]):
+        return "Floral"
+    if any(x in text for x in ["amber", "woody", "tobacco", "sandalwood", "patchouli", "oud"]):
+        return "Warm"
+    if any(x in text for x in ["pear", "peach", "cherry", "lychee", "mango", "fruity"]):
+        return "Fruity"
+    return "Balanced"
+
+
+def combo_score_rows(rows, vibe="Any", spray_style="Moderate"):
+    """
+    Smarter score for 2 or 3 fragrance combinations.
+    """
+    all_accords = [accord_set(r) for r in rows]
+    all_notes = [note_set(r) for r in rows]
+
+    score = 0.0
+
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            shared_accords = all_accords[i] & all_accords[j]
+            shared_notes = all_notes[i] & all_notes[j]
+            score += len(shared_accords) * 3.0
+            score += len(shared_notes) * 1.25
+
+    combined_text = " ".join(
+        list(set().union(*all_accords)) +
+        list(set().union(*all_notes))
+    )
+
+    synergy_rules = [
         (["vanilla", "amber"], 2.5),
+        (["musk", "floral"], 2.0),
+        (["citrus", "woody"], 2.0),
+        (["fresh", "amber"], 1.4),
+        (["cherry", "vanilla"], 2.2),
         (["coffee", "vanilla"], 2.0),
-        (["cherry", "almond"], 2.0),
-        (["tobacco", "vanilla"], 2.5),
-        (["floral", "musk"], 1.8),
-        (["citrus", "fresh"], 1.8),
-        (["woody", "amber"], 2.0),
-        (["gourmand", "sweet"], 2.2),
+        (["tobacco", "vanilla"], 2.3),
+        (["rose", "musk"], 1.8),
+        (["pear", "floral"], 1.4),
+        (["gourmand", "musk"], 1.7),
     ]
-    for needed, pts in bonus_pairs:
+    for needed, pts in synergy_rules:
         if all(n in combined_text for n in needed):
             score += pts
 
-    mood_terms = {
+    roles = [fragrance_role(r) for r in rows]
+    if "Lift" in roles:
+        score += 1.2
+    if "Heart" in roles:
+        score += 1.2
+    if "Anchor" in roles:
+        score += 1.5
+    if len(set(roles)) >= 2:
+        score += 1.0
+
+    clash_rules = [
+        (["marine", "tobacco"], 2.0),
+        (["aquatic", "oud"], 2.2),
+        (["green", "dessert"], 1.5),
+        (["powdery", "marine"], 1.4),
+    ]
+    for bad_pair, penalty in clash_rules:
+        if all(n in combined_text for n in bad_pair):
+            score -= penalty
+
+    dense_terms = ["oud", "tobacco", "amber", "vanilla", "sweet", "gourmand", "patchouli"]
+    dense_count = sum(1 for term in dense_terms if term in combined_text)
+    if len(rows) == 3 and dense_count >= 5:
+        score -= 1.5
+
+    vibe_map = {
         "Any": [],
-        "Gourmand": ["gourmand", "sweet", "vanilla", "dessert", "marzipan", "caramel"],
-        "Floral": ["floral", "rose", "jasmine", "orange blossom", "neroli", "iris"],
-        "Fresh": ["fresh", "citrus", "marine", "bergamot", "lemon", "mint"],
-        "Woody / Warm": ["woody", "amber", "cedar", "sandalwood", "tobacco", "patchouli"],
-        "Fruity": ["fruity", "pear", "mango", "cherry", "peach", "plum", "lychee"],
+        "Sweet": ["sweet", "vanilla", "gourmand", "praline", "caramel"],
+        "Fresh": ["fresh", "citrus", "marine", "mint", "bergamot"],
+        "Date Night": ["amber", "musk", "vanilla", "tobacco", "rose"],
+        "Loud": ["amber", "woody", "oud", "sweet", "tobacco"],
+        "Soft": ["musk", "floral", "powdery", "clean"],
+        "Cozy": ["vanilla", "amber", "musk", "cashmere", "sweet"],
+        "Clean": ["fresh", "citrus", "soap", "musk", "white floral"],
+        "Expensive": ["woody", "amber", "iris", "musk", "sandalwood", "rose"],
     }
-    for term in mood_terms.get(mood, []):
+    for term in vibe_map.get(vibe, []):
         if term in combined_text:
             score += 0.8
+
+    if spray_style == "Oversprayer":
+        risky_terms = ["oud", "tobacco", "patchouli", "leather", "animalic", "smoky"]
+        risky_hits = sum(1 for term in risky_terms if term in combined_text)
+        score -= risky_hits * 0.5
+    elif spray_style == "Conservative":
+        airy_terms = ["fresh", "citrus", "marine", "musk"]
+        airy_hits = sum(1 for term in airy_terms if term in combined_text)
+        score += airy_hits * 0.2
 
     return round(score, 2)
 
 
-def combo_description(a, b):
-    """Short plain-English combo summary."""
-    text = " ".join(a["accords"] + b["accords"] + [x.lower() for x in a["all_notes"] + b["all_notes"]])
+def combo_name_rows(rows, vibe="Any"):
+    """
+    More creative combo naming.
+    """
+    style = layering_style_summary(rows)
 
-    if any(x in text for x in ["gourmand", "vanilla", "sweet", "dessert"]):
-        return "Sweet, creamy layering with a cozy dessert-like feel."
-    if any(x in text for x in ["floral", "rose", "jasmine", "orange blossom"]):
-        return "Soft floral layering with lift and smooth sweetness."
-    if any(x in text for x in ["fresh", "citrus", "marine", "bergamot"]):
-        return "Bright, airy layering that feels clean and easy to wear."
-    if any(x in text for x in ["woody", "amber", "tobacco", "patchouli"]):
-        return "Rich, warm layering with depth and an expensive feel."
-    if any(x in text for x in ["fruity", "pear", "mango", "cherry"]):
-        return "Juicy, playful layering with added brightness and dimension."
-    return "Balanced layering with shared notes and complementary structure."
+    name_bank = {
+        "Sweet": [
+            "Sugar Veil", "Velvet Crave", "Dessert Heat", "Frosted Skin", "Candy Smoke"
+        ],
+        "Fresh": [
+            "Clean Halo", "Blue Static", "Citrus Rush", "Air Charge", "White Pulse"
+        ],
+        "Floral": [
+            "Petal Drift", "Blush Bloom", "Silk Garden", "Soft Bloom", "Rose Signal"
+        ],
+        "Warm": [
+            "Ember Silk", "Amber Voltage", "Midnight Burn", "Velvet Heat", "Golden Smoke"
+        ],
+        "Fruity": [
+            "Neon Fruit", "Juicy Signal", "Cherry Current", "Sun Pop", "Gloss Rush"
+        ],
+        "Balanced": [
+            "After Velvet", "Layer Theory", "Soft Static", "Private Blend", "Skin Echo"
+        ],
+    }
+
+    if vibe == "Date Night":
+        return random.choice(["After Hours", "Velvet After Dark", "Midnight Pull", "Skin Chemistry"])
+    if vibe == "Expensive":
+        return random.choice(["Private Reserve", "Gold Room", "Black Tie Glow", "Cashmere Signal"])
+
+    return random.choice(name_bank.get(style, name_bank["Balanced"]))
 
 
-def combo_name(a, b):
-    """Simple combo naming logic."""
-    one = a["name_pretty"].split()[0]
-    two = b["name_pretty"].split()[0]
-    if one.lower() != two.lower():
-        return f"{one} x {two}"
-    return f"{a['name_pretty']} Blend"
+def combo_description_rows(rows):
+    """
+    Explain why the combo works in a more interesting way.
+    """
+    roles = [(r["display_name"], fragrance_role(r)) for r in rows]
+    role_lines = []
 
-# Load catalog once
+    for name, role in roles:
+        if role == "Lift":
+            role_lines.append(f"{name} adds brightness and lift.")
+        elif role == "Heart":
+            role_lines.append(f"{name} adds body and character through the middle.")
+        elif role == "Anchor":
+            role_lines.append(f"{name} gives the combo depth and staying power.")
+        else:
+            role_lines.append(f"{name} supports the blend without overpowering it.")
+
+    style = layering_style_summary(rows)
+    opening = {
+        "Sweet": "This stack leans creamy, addictive, and easy to notice.",
+        "Fresh": "This stack feels airy, bright, and wearable.",
+        "Floral": "This stack feels smooth, soft, and expressive.",
+        "Warm": "This stack leans rich, deep, and confident.",
+        "Fruity": "This stack feels playful and energetic with extra pop.",
+        "Balanced": "This stack is balanced and rounded with a smooth transition.",
+    }.get(style, "This stack feels balanced and wearable.")
+
+    return opening + " " + " ".join(role_lines)
+
+
+def spray_guide(rows, spray_style="Moderate"):
+    """
+    Give placement guidance based on combo density and user spray style.
+    """
+    combined_text = " ".join(
+        list(set().union(*[accord_set(r) for r in rows])) +
+        list(set().union(*[note_set(r) for r in rows]))
+    )
+
+    is_dense = any(x in combined_text for x in ["oud", "tobacco", "amber", "patchouli", "leather", "gourmand", "sweet"])
+    is_fresh = any(x in combined_text for x in ["fresh", "citrus", "marine", "mint", "aquatic"])
+
+    if spray_style == "Conservative":
+        if is_dense:
+            return "1 spray on chest, 1 on lower neck. Skip extra fabric sprays so the blend stays smooth."
+        if is_fresh:
+            return "1 on chest, 1 on neck, optional 1 on shirt for a light scent trail."
+        return "1 on chest, 1 on neck, optional 1 on shirt."
+
+    if spray_style == "Oversprayer":
+        if is_dense:
+            return "2 on chest, 1 back of neck, 1 shirt. Keep heavy notes off the front neck so it stays strong without getting thick."
+        if is_fresh:
+            return "2 on chest, 1 back of neck, 1 each side of neck, 2 on shirt. Fresh blends can handle more fabric and air."
+        return "2 on chest, 1 back of neck, 1 each side of neck, 1 shirt, optional 1 forearm."
+
+    if is_dense:
+        return "2 on chest, 1 on lower neck, optional 1 back of neck. This keeps depth without overloading the air."
+    if is_fresh:
+        return "2 on chest, 1 on neck, 1 shirt. Fresh blends open nicely with one fabric spray."
+    return "2 on chest, 1 on neck, 1 shirt for a balanced cloud."
+
+
+def build_combo_result(rows, vibe="Any", spray_style="Moderate"):
+    return {
+        "rows": rows,
+        "score": combo_score_rows(rows, vibe=vibe, spray_style=spray_style),
+        "combo_name": combo_name_rows(rows, vibe=vibe),
+        "description": combo_description_rows(rows),
+        "spray_guide": spray_guide(rows, spray_style=spray_style),
+        "style": layering_style_summary(rows),
+        "key": "|||".join(sorted([r["display_name"] for r in rows]))
+    }
+
+
+# =========================================================
+# LOAD DATA
+# =========================================================
 df = load_fragrances()
 
 # =========================================================
@@ -547,7 +631,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Theme selector, including "System Default"
     selected_theme = st.selectbox(
         "Theme",
         list(THEMES.keys()),
@@ -586,19 +669,21 @@ if st.session_state.page == "Home":
     1. Open <b>Browse</b> and find your fragrances.<br>
     2. Tap <b>➕</b> to add them to your collection.<br>
     3. Open <b>Sniff</b> to get layering ideas.<br>
-    4. Use <b>⭐</b> to save things for later.
+    4. Use <b>Save</b> to keep combos for later.
     </div>
     """, unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
-    if c1.button("Browse Fragrances"):
-        st.session_state.page = "Browse"
-        st.rerun()
-    if c2.button("Open My Collection"):
-        st.session_state.page = "Collection"
-        st.rerun()
+    with c1:
+        if st.button("Browse Fragrances", use_container_width=True):
+            st.session_state.page = "Browse"
+            st.rerun()
+    with c2:
+        if st.button("Open My Collection", use_container_width=True):
+            st.session_state.page = "Collection"
+            st.rerun()
 
-    st.caption("➕ Add  •  ⭐ Save  •  ✕ Remove  •  🛒 Check Price")
+    st.caption("➕ Add  •  Save combos  •  ✕ Remove  •  🛒 Check price")
 
 # =========================================================
 # PAGE: BROWSE
@@ -606,22 +691,23 @@ if st.session_state.page == "Home":
 elif st.session_state.page == "Browse":
     st.markdown("### Browse Fragrances")
 
-    # Quick brand buttons
     quick1, quick2, quick3 = st.columns(3)
-    if quick1.button("Desmirage"):
-        st.session_state.search_query = "desmirage"
-        st.session_state.brand_filter = "All Brands"
-        st.rerun()
-    if quick2.button("Arlyn"):
-        st.session_state.search_query = "arlyn"
-        st.session_state.brand_filter = "All Brands"
-        st.rerun()
-    if quick3.button("Jean Rish"):
-        st.session_state.search_query = "jean rish"
-        st.session_state.brand_filter = "All Brands"
-        st.rerun()
+    with quick1:
+        if st.button("Desmirage", use_container_width=True):
+            st.session_state.search_query = "desmirage"
+            st.session_state.brand_filter = "All Brands"
+            st.rerun()
+    with quick2:
+        if st.button("Arlyn", use_container_width=True):
+            st.session_state.search_query = "arlyn"
+            st.session_state.brand_filter = "All Brands"
+            st.rerun()
+    with quick3:
+        if st.button("Jean Rish", use_container_width=True):
+            st.session_state.search_query = "jean rish"
+            st.session_state.brand_filter = "All Brands"
+            st.rerun()
 
-    # Search / filter controls
     filter_col1, filter_col2 = st.columns([1, 2])
     all_brands = sorted(df["brand_pretty"].dropna().unique().tolist())
 
@@ -642,7 +728,6 @@ elif st.session_state.page == "Browse":
         )
         st.session_state.search_query = search_query
 
-    # Apply filters
     filtered_df = df.copy()
 
     if brand_filter != "All Brands":
@@ -652,12 +737,15 @@ elif st.session_state.page == "Browse":
         q = search_query.strip().lower()
         filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
 
-    # Hide items already in the user's collection
-    filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
+    # Hide anything already in collection
+    filtered_df = filtered_df[~filtered_df["id"].isin(st.session_state.my_collection_ids)].copy()
 
-    # Prioritize desmirage slightly in browse results
+    # Slight prioritization for Desmirage
     filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
-    filtered_df = filtered_df.sort_values(["brand_priority", "brand_pretty", "name_pretty"], ascending=[True, True, True])
+    filtered_df = filtered_df.sort_values(
+        ["brand_priority", "brand_pretty", "name_pretty"],
+        ascending=[True, True, True]
+    )
 
     results_df = filtered_df.head(24)
 
@@ -673,30 +761,25 @@ elif st.session_state.page == "Browse":
             if row["inspired_by"]:
                 st.markdown(f'<div class="mini-label">Inspired by</div><div>{row["inspired_by"]}</div>', unsafe_allow_html=True)
 
-            accord_text = ", ".join([
-                x for x in [
-                    row["mainaccord1"],
-                    row["mainaccord2"],
-                    row["mainaccord3"],
-                    row["mainaccord4"],
-                    row["mainaccord5"]
-                ] if x
-            ])
+            accord_text = ", ".join([x for x in row["accords"] if x])
             if accord_text:
                 st.markdown(f'<div class="mini-label">Accords</div><div>{accord_text}</div>', unsafe_allow_html=True)
 
             b1, b2 = st.columns(2)
 
-            if b1.button("➕", key=f"add_{row['id']}"):
-                if row["display_name"] not in st.session_state.my_collection:
-                    st.session_state.my_collection.append(row["display_name"])
-                st.session_state.last_added = row["display_name"]
-                st.rerun()
+            with b1:
+                if st.button("➕ Add", key=f"add_{row['id']}", use_container_width=True):
+                    if row["id"] not in st.session_state.my_collection_ids:
+                        st.session_state.my_collection_ids.append(row["id"])
+                    st.session_state.last_added = row["display_name"]
+                    st.rerun()
 
-            if b2.button("⭐", key=f"save_{row['id']}"):
-                if row["display_name"] not in st.session_state.sniff_list:
-                    st.session_state.sniff_list.append(row["display_name"])
-                st.rerun()
+            with b2:
+                st.link_button(
+                    "🛒 Check Price",
+                    amazon_search_link(row["name_pretty"]),
+                    use_container_width=True
+                )
 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -706,9 +789,9 @@ elif st.session_state.page == "Browse":
 elif st.session_state.page == "Collection":
     st.markdown("### My Collection")
 
-    if st.session_state.my_collection:
-        collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+    collection_df = get_collection_df(df)
 
+    if not collection_df.empty:
         for family in ["Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity", "Other"]:
             family_rows = collection_df[collection_df["family"] == family]
             if family_rows.empty:
@@ -717,12 +800,14 @@ elif st.session_state.page == "Collection":
             st.markdown(f"#### {family_icon(family)} {family}")
             for _, row in family_rows.sort_values("display_name").iterrows():
                 c1, c2 = st.columns([6, 1])
-                c1.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
-                if c2.button("✕", key=f"remove_{row['display_name']}"):
-                    st.session_state.my_collection = [
-                        x for x in st.session_state.my_collection if x != row["display_name"]
-                    ]
-                    st.rerun()
+                with c1:
+                    st.markdown(f'<div class="collection-chip"><b>{row["display_name"]}</b></div>', unsafe_allow_html=True)
+                with c2:
+                    if st.button("✕", key=f"remove_{row['id']}", use_container_width=True):
+                        st.session_state.my_collection_ids = [
+                            x for x in st.session_state.my_collection_ids if x != row["id"]
+                        ]
+                        st.rerun()
     else:
         st.info("Your collection is empty.")
 
@@ -732,9 +817,8 @@ elif st.session_state.page == "Collection":
 elif st.session_state.page == "Sniff":
     st.markdown("### Sniff")
 
-    sniff_col1, sniff_col2 = st.columns(2)
-
-    with sniff_col1:
+    top1, top2 = st.columns(2)
+    with top1:
         sniff_mode = st.radio(
             "Use",
             ["My Collection Only", "My Collection + Community Fragrances"],
@@ -742,18 +826,36 @@ elif st.session_state.page == "Sniff":
         )
         st.session_state.sniff_mode = sniff_mode
 
-    with sniff_col2:
-        mood = st.selectbox(
-            "Mood",
-            ["Any", "Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity"],
-            index=["Any", "Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity"].index(st.session_state.mood)
+    with top2:
+        vibe = st.selectbox(
+            "Vibe",
+            ["Any", "Sweet", "Fresh", "Date Night", "Loud", "Soft", "Cozy", "Clean", "Expensive"],
+            index=["Any", "Sweet", "Fresh", "Date Night", "Loud", "Soft", "Cozy", "Clean", "Expensive"].index(st.session_state.vibe)
         )
-        st.session_state.mood = mood
+        st.session_state.vibe = vibe
 
-    st.caption("Tap 🧪 to generate layering ideas from what you own.")
+    mid1, mid2 = st.columns(2)
+    with mid1:
+        layer_count = st.radio(
+            "How many layers",
+            [2, 3],
+            index=[2, 3].index(st.session_state.layer_count),
+            horizontal=True
+        )
+        st.session_state.layer_count = layer_count
 
-    if st.button("🧪 Sniff", type="primary"):
-        collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+    with mid2:
+        spray_style = st.selectbox(
+            "Spray style",
+            ["Conservative", "Moderate", "Oversprayer"],
+            index=["Conservative", "Moderate", "Oversprayer"].index(st.session_state.spray_style)
+        )
+        st.session_state.spray_style = spray_style
+
+    st.caption("Generate fun layering ideas based on what you own and how you like to wear fragrance.")
+
+    if st.button("Generate Layering Ideas", type="primary", use_container_width=True):
+        collection_df = get_collection_df(df)
 
         if collection_df.empty:
             st.warning("Add at least one fragrance to My Collection first.")
@@ -762,24 +864,48 @@ elif st.session_state.page == "Sniff":
             results = []
             seen = set()
 
-            for _, a in collection_df.iterrows():
-                for _, b in pool_df.iterrows():
-                    if a["display_name"] == b["display_name"]:
-                        continue
+            collection_rows = [row for _, row in collection_df.iterrows()]
+            pool_rows = [row for _, row in pool_df.iterrows()]
 
-                    key = tuple(sorted([a["display_name"], b["display_name"]]))
-                    if key in seen:
-                        continue
-                    seen.add(key)
+            if layer_count == 2:
+                for a in collection_rows:
+                    for b in pool_rows:
+                        if a["display_name"] == b["display_name"]:
+                            continue
 
-                    results.append({
-                        "a": a,
-                        "b": b,
-                        "score": combo_score(a, b, mood),
-                        "combo_name": combo_name(a, b),
-                        "description": combo_description(a, b),
-                        "key": f"{key[0]}|||{key[1]}"
-                    })
+                        combo_key = tuple(sorted([a["display_name"], b["display_name"]]))
+                        if combo_key in seen:
+                            continue
+                        seen.add(combo_key)
+
+                        results.append(
+                            build_combo_result(
+                                [a, b],
+                                vibe=st.session_state.vibe,
+                                spray_style=st.session_state.spray_style
+                            )
+                        )
+
+            else:
+                for a in collection_rows:
+                    for b in pool_rows:
+                        for c in pool_rows:
+                            names = [a["display_name"], b["display_name"], c["display_name"]]
+                            if len(set(names)) < 3:
+                                continue
+
+                            combo_key = tuple(sorted(names))
+                            if combo_key in seen:
+                                continue
+                            seen.add(combo_key)
+
+                            results.append(
+                                build_combo_result(
+                                    [a, b, c],
+                                    vibe=st.session_state.vibe,
+                                    spray_style=st.session_state.spray_style
+                                )
+                            )
 
             st.session_state.latest_combos = sorted(results, key=lambda x: x["score"], reverse=True)[:12]
 
@@ -787,53 +913,70 @@ elif st.session_state.page == "Sniff":
         st.markdown("#### Your Layering Suggestions")
 
         for combo in st.session_state.latest_combos:
-            a = combo["a"]
-            b = combo["b"]
             combo_key = combo["key"]
             saved_rating = st.session_state.combo_ratings.get(combo_key, "unreviewed")
+            rows = combo["rows"]
 
             st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
             st.markdown(f'<div class="sniff-name">{combo["combo_name"]}</div>', unsafe_allow_html=True)
-            st.write(f"**Layer:** {a['display_name']} + {b['display_name']}")
-            st.write(f"**Why it may work:** {combo['description']}")
-            st.write(f"**Mood fit score:** {combo['score']}")
+            st.markdown(f'<div class="sniff-meta">{combo["style"]} layering idea</div>', unsafe_allow_html=True)
+
+            st.write("**Layer these:**")
+            for r in rows:
+                st.write(f"• {r['display_name']}")
+
+            st.write(f"**Why it works:** {combo['description']}")
+            st.write(f"**Spray guide:** {combo['spray_guide']}")
+            st.write(f"**Match score:** {combo['score']}")
             st.write(f"**Current rating:** {saved_rating.title() if saved_rating != 'unreviewed' else 'Unreviewed'}")
-            st.caption("Suggested use: 2 sprays of the richer scent on chest, 1 spray of the brighter scent on neck or shirt.")
 
-            r1, r2, r3, r4, r5, r6 = st.columns(6)
+            r1, r2, r3, r4, r5 = st.columns(5)
 
-            if r1.button("🚀", key=f"amazing_{combo_key}"):
-                st.session_state.combo_ratings[combo_key] = "amazing"
-                st.rerun()
-            if r2.button("👌", key=f"good_{combo_key}"):
-                st.session_state.combo_ratings[combo_key] = "good"
-                st.rerun()
-            if r3.button("😐", key=f"neutral_{combo_key}"):
-                st.session_state.combo_ratings[combo_key] = "neutral"
-                st.rerun()
-            if r4.button("🤢", key=f"barf_{combo_key}"):
-                st.session_state.combo_ratings[combo_key] = "barf"
-                st.rerun()
-            if r5.button("⭐", key=f"combo_save_{combo_key}"):
-                if b["display_name"] not in st.session_state.sniff_list:
-                    st.session_state.sniff_list.append(b["display_name"])
-                st.rerun()
+            with r1:
+                if st.button("Amazing", key=f"amazing_{combo_key}", use_container_width=True):
+                    st.session_state.combo_ratings[combo_key] = "amazing"
+                    st.rerun()
 
-            r6.link_button("🛒", amazon_search_link(b["name_pretty"]))
+            with r2:
+                if st.button("Good", key=f"good_{combo_key}", use_container_width=True):
+                    st.session_state.combo_ratings[combo_key] = "good"
+                    st.rerun()
+
+            with r3:
+                if st.button("Okay", key=f"neutral_{combo_key}", use_container_width=True):
+                    st.session_state.combo_ratings[combo_key] = "neutral"
+                    st.rerun()
+
+            with r4:
+                if st.button("Bad", key=f"bad_{combo_key}", use_container_width=True):
+                    st.session_state.combo_ratings[combo_key] = "bad"
+                    st.rerun()
+
+            with r5:
+                if st.button("Save", key=f"combo_save_{combo_key}", use_container_width=True):
+                    if combo_key not in st.session_state.saved_combo_keys:
+                        st.session_state.saved_combo_keys.append(combo_key)
+                    st.rerun()
+
             st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================================================
 # PAGE: SAVED
 # =========================================================
 elif st.session_state.page == "Saved":
-    st.markdown("### Sniff List")
+    st.markdown("### Saved Layering Ideas")
 
-    if st.session_state.sniff_list:
-        for item in st.session_state.sniff_list:
+    if st.session_state.saved_combo_keys:
+        for item in st.session_state.saved_combo_keys:
             c1, c2 = st.columns([6, 1])
-            c1.markdown(f'<div class="collection-chip"><b>{item}</b></div>', unsafe_allow_html=True)
-            if c2.button("✕", key=f"saved_remove_{item}"):
-                st.session_state.sniff_list = [x for x in st.session_state.sniff_list if x != item]
-                st.rerun()
+            pretty = item.replace("|||", "  +  ")
+            with c1:
+                st.markdown(f'<div class="collection-chip"><b>{pretty}</b></div>', unsafe_allow_html=True)
+            with c2:
+                if st.button("✕", key=f"saved_remove_{item}", use_container_width=True):
+                    st.session_state.saved_combo_keys = [
+                        x for x in st.session_state.saved_combo_keys if x != item
+                    ]
+                    st.rerun()
     else:
         st.info("Nothing saved yet.")
