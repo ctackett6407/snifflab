@@ -205,7 +205,7 @@ if theme is not None:
         /* =========================
            BUTTONS
            ========================= */
-        div.stButton > button {
+        div.stButton > button {{}
             background-color: {theme['button_bg']} !important;
             color: {theme['button_text']} !important;
             border: 1px solid {theme['border']} !important;
@@ -214,7 +214,7 @@ if theme is not None:
             font-size: 18px !important;
             box-shadow: none !important;
             -webkit-text-fill-color: {theme['button_text']} !important;
-        }
+        }}
 
         div.stButton > button p,
         div.stButton > button span,
