@@ -149,7 +149,7 @@ if theme is not None:
             margin-bottom: 10px;
         }}
 
-        .sniff-name {{}
+        .sniff-name {{
             font-size: 1.05rem;
             font-weight: 700;
             color: {theme['text']};
