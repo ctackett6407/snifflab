@@ -99,6 +99,8 @@ DEFAULTS = {
     "browse_selected": [],
     "collection_selected": [],
     "collection_loaded_for_user": "",
+    "saved_loaded_for_user": "",
+    "ratings_loaded_for_user": "",
 }
 
 for key, value in DEFAULTS.items():
@@ -116,196 +118,20 @@ def get_gsheets_conn():
 
 
 def run_with_backoff(func, max_retries: int = 5):
-    """Retry Google Sheets operations when rate limits are hit."""
+    """
+    Retry on Google Sheets quota / transient API errors.
+    """
     for attempt in range(max_retries):
         try:
             return func()
         except gspread.exceptions.APIError as e:
             msg = str(e).lower()
-            if "429" in msg or "quota" in msg or "resource_exhausted" in msg:
+            if "429" in msg or "quota" in msg or "resource_exhausted" in msg or "too many requests" in msg:
                 sleep_for = min((2 ** attempt) + random.random(), 10)
                 time.sleep(sleep_for)
                 continue
             raise
     raise RuntimeError("Google Sheets is temporarily busy. Please wait a moment and try again.")
-
-
-# =========================================================
-# AUTH + USER HELPERS
-# =========================================================
-@st.cache_data(ttl=30, show_spinner=False)
-def load_users_sheet() -> pd.DataFrame:
-    """Read the users worksheet and normalize its columns."""
-    try:
-        conn = get_gsheets_conn()
-        df = run_with_backoff(lambda: conn.read(worksheet="users", ttl=30))
-    except Exception:
-        df = pd.DataFrame(columns=["user_id", "email", "display_name", "created_at"])
-
-    if df is None or len(df) == 0:
-        df = pd.DataFrame(columns=["user_id", "email", "display_name", "created_at"])
-    else:
-        df = pd.DataFrame(df).fillna("")
-
-    for col in ["user_id", "email", "display_name", "created_at"]:
-        if col not in df.columns:
-            df[col] = ""
-
-    return df[["user_id", "email", "display_name", "created_at"]].copy()
-
-
-def save_users_sheet(users_df: pd.DataFrame) -> None:
-    """Write the users worksheet back to Google Sheets."""
-    conn = get_gsheets_conn()
-    run_with_backoff(lambda: conn.update(worksheet="users", data=users_df))
-    st.cache_data.clear()
-
-
-def get_logged_in_identity():
-    """Return the currently signed-in user's identity info."""
-    if not st.user.is_logged_in:
-        return None
-
-    email = str(getattr(st.user, "email", "") or "").strip().lower()
-    name = str(getattr(st.user, "name", "") or "").strip()
-
-    if not email:
-        return None
-
-    if not name:
-        name = email.split("@")[0]
-
-    return {
-        "user_id": email,
-        "email": email,
-        "display_name": name,
-    }
-
-
-def get_or_create_current_user():
-    """Ensure the logged-in user exists in the users worksheet."""
-    identity = get_logged_in_identity()
-    if identity is None:
-        return None
-
-    users_df = load_users_sheet()
-
-    existing = users_df[
-        users_df["user_id"].astype(str).str.lower() == identity["user_id"]
-    ]
-    if not existing.empty:
-        row = existing.iloc[0]
-        return {
-            "user_id": str(row["user_id"]),
-            "email": str(row["email"]),
-            "display_name": str(row["display_name"]),
-        }
-
-    new_row = pd.DataFrame([{
-        "user_id": identity["user_id"],
-        "email": identity["email"],
-        "display_name": identity["display_name"],
-        "created_at": pd.Timestamp.utcnow().isoformat(),
-    }])
-
-    users_df = pd.concat([users_df, new_row], ignore_index=True)
-    save_users_sheet(users_df)
-    return identity
-
-
-# =========================================================
-# COLLECTION STORAGE HELPERS
-# =========================================================
-@st.cache_data(ttl=30, show_spinner=False)
-def load_collections_sheet() -> pd.DataFrame:
-    """Read the collections worksheet and normalize its columns."""
-    try:
-        conn = get_gsheets_conn()
-        df = run_with_backoff(lambda: conn.read(worksheet="collections", ttl=30))
-    except Exception:
-        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
-
-    if df is None or len(df) == 0:
-        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
-    else:
-        df = pd.DataFrame(df).fillna("")
-
-    for col in ["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]:
-        if col not in df.columns:
-            df[col] = ""
-
-    return df[["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]].copy()
-
-
-def save_collections_sheet(collections_df: pd.DataFrame) -> None:
-    """Write the collections worksheet back to Google Sheets."""
-    conn = get_gsheets_conn()
-    run_with_backoff(lambda: conn.update(worksheet="collections", data=collections_df))
-    st.cache_data.clear()
-
-
-def load_user_collection(user_id: str) -> list[str]:
-    """Return this user's saved collection as a list of display names."""
-    collections_df = load_collections_sheet()
-    if collections_df.empty:
-        return []
-
-    user_rows = collections_df[
-        collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()
-    ].copy()
-
-    if user_rows.empty:
-        return []
-
-    items = user_rows["fragrance_name"].astype(str).tolist()
-    return [x for x in items if x.strip()]
-
-
-def add_collection_item(user_id: str, row) -> None:
-    """Add one fragrance to the user's collection in Google Sheets."""
-    collections_df = load_collections_sheet()
-
-    fragrance_id = str(row["id"])
-    fragrance_name = str(row["display_name"])
-    brand = str(row["brand_pretty"])
-
-    already_exists = collections_df[
-        (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
-        (collections_df["fragrance_id"].astype(str) == fragrance_id)
-    ]
-
-    if not already_exists.empty:
-        return
-
-    new_row = pd.DataFrame([{
-        "user_id": user_id,
-        "fragrance_id": fragrance_id,
-        "fragrance_name": fragrance_name,
-        "brand": brand,
-        "added_at": pd.Timestamp.utcnow().isoformat(),
-    }])
-
-    collections_df = pd.concat([collections_df, new_row], ignore_index=True)
-    save_collections_sheet(collections_df)
-
-
-def remove_collection_item(user_id: str, fragrance_name: str) -> None:
-    """Remove one fragrance from the user's collection in Google Sheets."""
-    collections_df = load_collections_sheet()
-
-    collections_df = collections_df[
-        ~(
-            (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
-            (collections_df["fragrance_name"].astype(str) == str(fragrance_name))
-        )
-    ].copy()
-
-    save_collections_sheet(collections_df)
-
-
-def sync_session_collection_from_cloud(user_id: str) -> None:
-    """Load the user's saved collection into session state."""
-    st.session_state.my_collection = load_user_collection(user_id)
 
 
 # =========================================================
@@ -384,6 +210,11 @@ if theme is not None:
                 border-radius: 12px;
                 padding: 10px 12px;
                 margin-bottom: 8px;
+            }}
+
+            .small-note {{
+                color: {theme['muted']};
+                font-size: 0.86rem;
             }}
 
             .tier-chip {{
@@ -486,19 +317,21 @@ if theme is not None:
 # =========================================================
 @st.cache_data
 def load_fragrances() -> pd.DataFrame:
-    """Load and enrich the fragrance catalog for display and scoring."""
+    """
+    Load and enrich the fragrance catalog.
+    """
     df = pd.read_csv(CSV_PATH, dtype=str).fillna("")
 
     def pretty_text(value: str) -> str:
         value = str(value).replace("-", " ").replace("_", " ").strip()
         return " ".join(word.capitalize() for word in value.split())
 
-    def split_notes(value: str) -> list[str]:
+    def split_notes(value: str):
         if not value:
             return []
         return [x.strip() for x in str(value).split(";") if x.strip()]
 
-    def infer_family(row) -> str:
+    def infer_family(row):
         text = " ".join([
             row.get("mainaccord1", ""),
             row.get("mainaccord2", ""),
@@ -575,6 +408,341 @@ def amazon_search_link(query: str) -> str:
 
 
 # =========================================================
+# GOOGLE AUTH + USER HELPERS
+# =========================================================
+def get_st_user_value(key: str, default=""):
+    try:
+        if hasattr(st.user, "get"):
+            value = st.user.get(key, default)
+            if value:
+                return value
+    except Exception:
+        pass
+
+    try:
+        value = st.user[key]
+        if value:
+            return value
+    except Exception:
+        pass
+
+    try:
+        value = getattr(st.user, key, default)
+        if value:
+            return value
+    except Exception:
+        pass
+
+    return default
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def load_users_sheet() -> pd.DataFrame:
+    try:
+        conn = get_gsheets_conn()
+        df = run_with_backoff(lambda: conn.read(worksheet="users", ttl=30))
+    except Exception:
+        df = pd.DataFrame(columns=["user_id", "email", "display_name", "created_at"])
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "email", "display_name", "created_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "email", "display_name", "created_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "email", "display_name", "created_at"]].copy()
+
+
+def save_users_sheet(users_df: pd.DataFrame) -> None:
+    conn = get_gsheets_conn()
+    run_with_backoff(lambda: conn.update(worksheet="users", data=users_df))
+    st.cache_data.clear()
+
+
+def get_logged_in_identity():
+    if not st.user.is_logged_in:
+        return None
+
+    email = str(get_st_user_value("email", "")).strip().lower()
+    name = str(get_st_user_value("name", "")).strip()
+
+    if not email:
+        return None
+
+    if not name:
+        name = email.split("@")[0]
+
+    return {
+        "user_id": email,
+        "email": email,
+        "display_name": name,
+    }
+
+
+def get_or_create_current_user():
+    identity = get_logged_in_identity()
+    if identity is None:
+        return None
+
+    users_df = load_users_sheet()
+
+    existing = users_df[users_df["user_id"].astype(str).str.lower() == identity["user_id"]]
+    if not existing.empty:
+        row = existing.iloc[0]
+        return {
+            "user_id": str(row["user_id"]),
+            "email": str(row["email"]),
+            "display_name": str(row["display_name"]),
+        }
+
+    new_row = pd.DataFrame([{
+        "user_id": identity["user_id"],
+        "email": identity["email"],
+        "display_name": identity["display_name"],
+        "created_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    users_df = pd.concat([users_df, new_row], ignore_index=True)
+    save_users_sheet(users_df)
+
+    return identity
+
+
+# =========================================================
+# COLLECTION STORAGE HELPERS
+# =========================================================
+@st.cache_data(ttl=30, show_spinner=False)
+def load_collections_sheet() -> pd.DataFrame:
+    try:
+        conn = get_gsheets_conn()
+        df = run_with_backoff(lambda: conn.read(worksheet="collections", ttl=30))
+    except Exception:
+        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]].copy()
+
+
+def save_collections_sheet(collections_df: pd.DataFrame) -> None:
+    conn = get_gsheets_conn()
+    run_with_backoff(lambda: conn.update(worksheet="collections", data=collections_df))
+    st.cache_data.clear()
+
+
+def load_user_collection(user_id: str) -> list[str]:
+    collections_df = load_collections_sheet()
+    if collections_df.empty:
+        return []
+
+    user_rows = collections_df[
+        collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()
+    ].copy()
+
+    if user_rows.empty:
+        return []
+
+    items = user_rows["fragrance_name"].astype(str).tolist()
+    return [x for x in items if x.strip()]
+
+
+def add_collection_item(user_id: str, row) -> None:
+    collections_df = load_collections_sheet()
+
+    fragrance_id = str(row["id"])
+    fragrance_name = str(row["display_name"])
+    brand = str(row["brand_pretty"])
+
+    already_exists = collections_df[
+        (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+        (collections_df["fragrance_id"].astype(str) == fragrance_id)
+    ]
+
+    if not already_exists.empty:
+        return
+
+    new_row = pd.DataFrame([{
+        "user_id": user_id,
+        "fragrance_id": fragrance_id,
+        "fragrance_name": fragrance_name,
+        "brand": brand,
+        "added_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    collections_df = pd.concat([collections_df, new_row], ignore_index=True)
+    save_collections_sheet(collections_df)
+
+
+def remove_collection_item(user_id: str, fragrance_name: str) -> None:
+    collections_df = load_collections_sheet()
+
+    collections_df = collections_df[
+        ~(
+            (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+            (collections_df["fragrance_name"].astype(str) == str(fragrance_name))
+        )
+    ].copy()
+
+    save_collections_sheet(collections_df)
+
+
+def sync_session_collection_from_cloud(user_id: str) -> None:
+    st.session_state.my_collection = load_user_collection(user_id)
+
+
+# =========================================================
+# SAVED COMBOS HELPERS
+# =========================================================
+@st.cache_data(ttl=30, show_spinner=False)
+def load_saved_combos_sheet() -> pd.DataFrame:
+    try:
+        conn = get_gsheets_conn()
+        df = run_with_backoff(lambda: conn.read(worksheet="saved_combos", ttl=30))
+    except Exception:
+        df = pd.DataFrame(columns=["user_id", "combo_key", "combo_name", "fragrance_a", "fragrance_b", "tier", "saved_at"])
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "combo_key", "combo_name", "fragrance_a", "fragrance_b", "tier", "saved_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "combo_key", "combo_name", "fragrance_a", "fragrance_b", "tier", "saved_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "combo_key", "combo_name", "fragrance_a", "fragrance_b", "tier", "saved_at"]].copy()
+
+
+def save_saved_combos_sheet(df_to_save: pd.DataFrame) -> None:
+    conn = get_gsheets_conn()
+    run_with_backoff(lambda: conn.update(worksheet="saved_combos", data=df_to_save))
+    st.cache_data.clear()
+
+
+def load_user_saved_combos(user_id: str) -> list[str]:
+    saved_df = load_saved_combos_sheet()
+    if saved_df.empty:
+        return []
+
+    user_rows = saved_df[saved_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()].copy()
+    if user_rows.empty:
+        return []
+
+    return [x for x in user_rows["combo_name"].astype(str).tolist() if x.strip()]
+
+
+def add_saved_combo(user_id: str, combo_key: str, combo_label: str, fragrance_a: str, fragrance_b: str, tier: str) -> None:
+    saved_df = load_saved_combos_sheet()
+
+    existing = saved_df[
+        (saved_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+        (saved_df["combo_key"].astype(str) == combo_key)
+    ]
+    if not existing.empty:
+        return
+
+    new_row = pd.DataFrame([{
+        "user_id": user_id,
+        "combo_key": combo_key,
+        "combo_name": combo_label,
+        "fragrance_a": fragrance_a,
+        "fragrance_b": fragrance_b,
+        "tier": tier,
+        "saved_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    saved_df = pd.concat([saved_df, new_row], ignore_index=True)
+    save_saved_combos_sheet(saved_df)
+
+
+def remove_saved_combo(user_id: str, combo_label: str) -> None:
+    saved_df = load_saved_combos_sheet()
+    saved_df = saved_df[
+        ~(
+            (saved_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+            (saved_df["combo_name"].astype(str) == str(combo_label))
+        )
+    ].copy()
+    save_saved_combos_sheet(saved_df)
+
+
+# =========================================================
+# COMBO RATINGS HELPERS
+# =========================================================
+@st.cache_data(ttl=30, show_spinner=False)
+def load_combo_ratings_sheet() -> pd.DataFrame:
+    try:
+        conn = get_gsheets_conn()
+        df = run_with_backoff(lambda: conn.read(worksheet="combo_ratings", ttl=30))
+    except Exception:
+        df = pd.DataFrame(columns=["user_id", "combo_key", "rating", "rated_at"])
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "combo_key", "rating", "rated_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "combo_key", "rating", "rated_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "combo_key", "rating", "rated_at"]].copy()
+
+
+def save_combo_ratings_sheet(df_to_save: pd.DataFrame) -> None:
+    conn = get_gsheets_conn()
+    run_with_backoff(lambda: conn.update(worksheet="combo_ratings", data=df_to_save))
+    st.cache_data.clear()
+
+
+def load_user_combo_ratings(user_id: str) -> dict:
+    ratings_df = load_combo_ratings_sheet()
+    if ratings_df.empty:
+        return {}
+
+    user_rows = ratings_df[ratings_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()].copy()
+    if user_rows.empty:
+        return {}
+
+    return {
+        str(row["combo_key"]): str(row["rating"])
+        for _, row in user_rows.iterrows()
+        if str(row["combo_key"]).strip()
+    }
+
+
+def set_combo_rating(user_id: str, combo_key: str, rating: str) -> None:
+    ratings_df = load_combo_ratings_sheet()
+
+    ratings_df = ratings_df[
+        ~(
+            (ratings_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+            (ratings_df["combo_key"].astype(str) == str(combo_key))
+        )
+    ].copy()
+
+    new_row = pd.DataFrame([{
+        "user_id": user_id,
+        "combo_key": combo_key,
+        "rating": rating,
+        "rated_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    ratings_df = pd.concat([ratings_df, new_row], ignore_index=True)
+    save_combo_ratings_sheet(ratings_df)
+
+
+# =========================================================
 # COMBO ENGINE
 # =========================================================
 def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
@@ -611,6 +779,7 @@ def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
             score += pts
 
     bridge_count = len(shared_accords) + len(shared_notes)
+
     if bridge_count == 0:
         score -= 3.0
     elif bridge_count == 1:
@@ -680,6 +849,7 @@ def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
             score += 0.5
 
     same_brand = str(a["brand"]).strip().lower() == str(b["brand"]).strip().lower()
+
     if mixing_style == "Same House":
         score += 2.0 if same_brand else -1.5
     elif mixing_style == "Cross-House":
@@ -741,7 +911,7 @@ def combo_description(a, b, vibe, profile) -> str:
 
 
 # =========================================================
-# LOAD DATA
+# LOAD STATIC CATALOG
 # =========================================================
 df = load_fragrances()
 
@@ -754,7 +924,11 @@ with st.sidebar:
     valid_pages = ["Home", "Browse", "Collection", "Saved", "Help", "Settings"]
     current_page = st.session_state.page if st.session_state.page in valid_pages else "Home"
 
-    page = st.radio("Go to", valid_pages, index=valid_pages.index(current_page))
+    page = st.radio(
+        "Go to",
+        valid_pages,
+        index=valid_pages.index(current_page),
+    )
     if page != st.session_state.page:
         st.session_state.page = page
         st.rerun()
@@ -765,4 +939,562 @@ with st.sidebar:
 # =========================================================
 # APP HEADER
 # =========================================================
-st.markdown('<div class="main-title">🧪
+st.markdown('<div class="main-title">🧪 SniffLab</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Pick your mood, tap Sniff, get layering ideas.</div>', unsafe_allow_html=True)
+st.markdown('<div class="hint-box">On mobile, tap <b>››</b> in the top-left corner to open the menu.</div>', unsafe_allow_html=True)
+
+# =========================================================
+# LOGIN GATE
+# =========================================================
+if not st.user.is_logged_in:
+    st.markdown("### Sign in")
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>Save your collection</b><br><br>
+        Sign in with Google so SniffLab can keep your collection,
+        saved combos, and ratings attached to you.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("Log in with Google", type="primary"):
+        st.login()
+
+    st.stop()
+
+# User is logged in from here
+current_user = get_or_create_current_user()
+
+# Load saved cloud data once per signed-in user
+if st.session_state.collection_loaded_for_user != current_user["user_id"]:
+    sync_session_collection_from_cloud(current_user["user_id"])
+    st.session_state.collection_loaded_for_user = current_user["user_id"]
+
+if st.session_state.saved_loaded_for_user != current_user["user_id"]:
+    st.session_state.saved_combos = load_user_saved_combos(current_user["user_id"])
+    st.session_state.saved_loaded_for_user = current_user["user_id"]
+
+if st.session_state.ratings_loaded_for_user != current_user["user_id"]:
+    st.session_state.combo_ratings = load_user_combo_ratings(current_user["user_id"])
+    st.session_state.ratings_loaded_for_user = current_user["user_id"]
+
+top1, top2 = st.columns([4, 1])
+with top1:
+    st.caption(f"Signed in as: {current_user['display_name']}")
+with top2:
+    if st.button("Log out"):
+        st.logout()
+
+if st.session_state.last_added:
+    st.toast(f"Added: {st.session_state.last_added}")
+    st.session_state.last_added = ""
+
+# =========================================================
+# PAGE: HOME
+# =========================================================
+if st.session_state.page == "Home":
+    st.markdown("### Sniff")
+
+    st.markdown(
+        f"""
+        <div class="hero-box">
+        <b>Your Collection</b><br>
+        {len(st.session_state.my_collection)} fragrance(s) ready to layer
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    source_mode = st.segmented_control(
+        "Where should Sniff pull from?",
+        ["My Collection", "Collection + Community"],
+        selection_mode="single",
+        default=st.session_state.source_mode,
+    )
+    st.session_state.source_mode = source_mode
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        vibe = st.selectbox(
+            "How are you feeling?",
+            ["Any", "Sexy", "Clean", "Cozy", "Night Out", "Soft"],
+            index=["Any", "Sexy", "Clean", "Cozy", "Night Out", "Soft"].index(st.session_state.vibe),
+        )
+        st.session_state.vibe = vibe
+
+    with c2:
+        profile = st.selectbox(
+            "What scent profile do you want?",
+            ["Any", "Gourmand", "Floral", "Fresh", "Woody", "Fruity"],
+            index=["Any", "Gourmand", "Floral", "Fresh", "Woody", "Fruity"].index(st.session_state.profile),
+        )
+        st.session_state.profile = profile
+
+    c3, c4 = st.columns(2)
+
+    with c3:
+        intensity = st.selectbox(
+            "How strong should it feel?",
+            ["Easy", "Signature", "Beast Mode", "Experimental"],
+            index=["Easy", "Signature", "Beast Mode", "Experimental"].index(st.session_state.intensity),
+        )
+        st.session_state.intensity = intensity
+
+    with c4:
+        mixing_style = st.selectbox(
+            "What kind of mixing do you want?",
+            ["Balanced", "Same House", "Cross-House"],
+            index=["Balanced", "Same House", "Cross-House"].index(st.session_state.mixing_style),
+        )
+        st.session_state.mixing_style = mixing_style
+
+    st.caption("Choose your mood and style, then tap Sniff.")
+
+    if st.button("🧪 Sniff", type="primary"):
+        with st.spinner("Sniffing your collection and building layering ideas..."):
+            collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+
+            if collection_df.empty:
+                st.warning("Add at least one fragrance to your collection first.")
+            else:
+                pool_df = collection_df.copy() if source_mode == "My Collection" else df.copy()
+
+                results = []
+                seen = set()
+
+                for _, a in collection_df.iterrows():
+                    for _, b in pool_df.iterrows():
+                        if a["display_name"] == b["display_name"]:
+                            continue
+
+                        key = tuple(sorted([a["display_name"], b["display_name"]]))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+
+                        score = combo_score(a, b, vibe, profile, intensity, mixing_style)
+                        tier = combo_tier(score, intensity)
+
+                        results.append({
+                            "a": a,
+                            "b": b,
+                            "score": score,
+                            "tier": tier,
+                            "combo_name": combo_name(a, b, tier),
+                            "description": combo_description(a, b, vibe, profile),
+                            "key": f"{key[0]}|||{key[1]}",
+                        })
+
+                results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+                if mixing_style == "Balanced":
+                    same_house = []
+                    cross_house = []
+
+                    for combo in results:
+                        brand_a = str(combo["a"]["brand"]).strip().lower()
+                        brand_b = str(combo["b"]["brand"]).strip().lower()
+                        if brand_a == brand_b:
+                            same_house.append(combo)
+                        else:
+                            cross_house.append(combo)
+
+                    mixed_results = []
+                    max_len = max(len(same_house), len(cross_house))
+
+                    for i in range(max_len):
+                        if i < len(cross_house):
+                            mixed_results.append(cross_house[i])
+                        if i < len(same_house):
+                            mixed_results.append(same_house[i])
+
+                    st.session_state.latest_combos = mixed_results[:12]
+                else:
+                    st.session_state.latest_combos = results[:12]
+
+    if st.session_state.latest_combos:
+        st.markdown("### Your Layering Suggestions")
+
+        for combo in st.session_state.latest_combos:
+            a = combo["a"]
+            b = combo["b"]
+            combo_key = combo["key"]
+            saved_rating = st.session_state.combo_ratings.get(combo_key, "unreviewed")
+            same_house = str(a["brand"]).strip().lower() == str(b["brand"]).strip().lower()
+
+            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+            st.markdown(f'<div class="tier-chip">{combo["tier"]}</div>', unsafe_allow_html=True)
+            st.caption("Same House" if same_house else "Cross-House")
+            st.markdown(f'<div class="sniff-name">{combo["combo_name"]}</div>', unsafe_allow_html=True)
+            st.write(f"**Layer:** {a['display_name']} + {b['display_name']}")
+            st.write(f"**Why it may work:** {combo['description']}")
+            st.write(f"**Score:** {combo['score']}")
+            st.write(f"**Current rating:** {saved_rating.title() if saved_rating != 'unreviewed' else 'Unreviewed'}")
+            st.caption("Suggested use: 2 sprays of the richer scent on chest, 1 spray of the brighter scent on neck or shirt.")
+
+            r1, r2, r3, r4, r5, r6 = st.columns(6)
+
+            if r1.button("🚀", key=f"amazing_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "amazing"
+                set_combo_rating(current_user["user_id"], combo_key, "amazing")
+                st.rerun()
+
+            if r2.button("👌", key=f"good_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "good"
+                set_combo_rating(current_user["user_id"], combo_key, "good")
+                st.rerun()
+
+            if r3.button("😐", key=f"neutral_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "neutral"
+                set_combo_rating(current_user["user_id"], combo_key, "neutral")
+                st.rerun()
+
+            if r4.button("🤢", key=f"barf_{combo_key}"):
+                st.session_state.combo_ratings[combo_key] = "barf"
+                set_combo_rating(current_user["user_id"], combo_key, "barf")
+                st.rerun()
+
+            if r5.button("⭐", key=f"save_combo_{combo_key}"):
+                combo_label = f"{combo['combo_name']} | {a['display_name']} + {b['display_name']}"
+                if combo_label not in st.session_state.saved_combos:
+                    st.session_state.saved_combos.append(combo_label)
+                add_saved_combo(
+                    current_user["user_id"],
+                    combo_key,
+                    combo_label,
+                    a["display_name"],
+                    b["display_name"],
+                    combo["tier"],
+                )
+                st.rerun()
+
+            r6.link_button("🛒", amazon_search_link(f"{b['brand_pretty']} {b['name_pretty']}"))
+            st.markdown("</div>", unsafe_allow_html=True)
+
+# =========================================================
+# PAGE: BROWSE
+# =========================================================
+elif st.session_state.page == "Browse":
+    st.markdown("### Add Fragrances")
+
+    quick1, quick2, quick3 = st.columns(3)
+    if quick1.button("Desmirage"):
+        st.session_state.search_query = "desmirage"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+    if quick2.button("Arlyn"):
+        st.session_state.search_query = "arlyn"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+    if quick3.button("Jean Rish"):
+        st.session_state.search_query = "jean rish"
+        st.session_state.brand_filter = "All Brands"
+        st.rerun()
+
+    f1, f2 = st.columns([1, 2])
+    all_brands = sorted(df["brand_pretty"].dropna().unique().tolist())
+
+    with f1:
+        options = ["All Brands"] + all_brands
+        brand_filter = st.selectbox(
+            "Brand",
+            options,
+            index=options.index(st.session_state.brand_filter) if st.session_state.brand_filter in options else 0,
+        )
+        st.session_state.brand_filter = brand_filter
+
+    with f2:
+        search_query = st.text_input(
+            "Search",
+            value=st.session_state.search_query,
+            placeholder="Try desmirage, vanilla, cherry, floral...",
+        )
+        st.session_state.search_query = search_query
+
+    filtered_df = df.copy()
+
+    if brand_filter != "All Brands":
+        filtered_df = filtered_df[filtered_df["brand_pretty"] == brand_filter]
+
+    if search_query.strip():
+        q = search_query.strip().lower()
+        filtered_df = filtered_df[filtered_df["search_text"].str.contains(q, na=False)]
+
+    filtered_df = filtered_df[~filtered_df["display_name"].isin(st.session_state.my_collection)].copy()
+    filtered_df["brand_priority"] = filtered_df["brand"].str.lower().apply(lambda x: 0 if x == "desmirage" else 1)
+    filtered_df = filtered_df.sort_values(
+        ["brand_priority", "brand_pretty", "name_pretty"],
+        ascending=[True, True, True],
+    )
+
+    results_df = filtered_df.head(30)
+
+    bulk1, bulk2 = st.columns(2)
+    if bulk1.button("➕ Add Selected"):
+        added_any = False
+        selected_rows = results_df[results_df["display_name"].isin(st.session_state.browse_selected)].copy()
+
+        with st.spinner("Saving selected fragrances..."):
+            for _, row in selected_rows.iterrows():
+                add_collection_item(current_user["user_id"], row)
+                if row["display_name"] not in st.session_state.my_collection:
+                    st.session_state.my_collection.append(row["display_name"])
+                    added_any = True
+
+        st.session_state.browse_selected = []
+        if added_any:
+            st.session_state.last_added = "Selected fragrances"
+        st.rerun()
+
+    if bulk2.button("Clear Selection"):
+        st.session_state.browse_selected = []
+        st.rerun()
+
+    if results_df.empty:
+        st.info("No fragrances matched your search.")
+    else:
+        st.caption(f"Showing {len(results_df)} result(s)")
+
+        for _, row in results_df.iterrows():
+            accords = [x for x in [
+                row["mainaccord1"],
+                row["mainaccord2"],
+                row["mainaccord3"],
+                row["mainaccord4"],
+                row["mainaccord5"],
+            ] if x]
+
+            top_notes = ", ".join(row["top_list"][:5]) if row["top_list"] else "—"
+            middle_notes = ", ".join(row["middle_list"][:5]) if row["middle_list"] else "—"
+            base_notes = ", ".join(row["base_list"][:5]) if row["base_list"] else "—"
+            accord_text = " • ".join(accords[:4]) if accords else "—"
+
+            st.markdown('<div class="sniff-card">', unsafe_allow_html=True)
+
+            selected = st.checkbox(
+                f"Select {row['display_name']}",
+                value=row["display_name"] in st.session_state.browse_selected,
+                key=f"browse_select_{row['id']}",
+                label_visibility="collapsed",
+            )
+
+            if selected and row["display_name"] not in st.session_state.browse_selected:
+                st.session_state.browse_selected.append(row["display_name"])
+            elif not selected and row["display_name"] in st.session_state.browse_selected:
+                st.session_state.browse_selected.remove(row["display_name"])
+
+            st.markdown(
+                f'<div class="sniff-name">{family_icon(row["family"])} {row["name_pretty"]} '
+                f'<span class="sniff-meta">| {row["brand_pretty"]}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+            if row["inspired_by"]:
+                st.markdown(
+                    f'<div><span class="mini-label">Inspired By</span><br>{row["inspired_by"]}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown(
+                f'<div style="margin-top:8px;"><span class="mini-label">Profile</span><br>{row["family"]} | {accord_text}</div>',
+                unsafe_allow_html=True,
+            )
+
+            b1, b2, b3 = st.columns(3)
+
+            if b1.button("➕", key=f"add_{row['id']}"):
+                with st.spinner("Saving to your collection..."):
+                    add_collection_item(current_user["user_id"], row)
+                if row["display_name"] not in st.session_state.my_collection:
+                    st.session_state.my_collection.append(row["display_name"])
+                st.session_state.last_added = row["display_name"]
+                st.rerun()
+
+            if b2.button("⭐", key=f"save_frag_{row['id']}"):
+                if row["display_name"] not in st.session_state.sniff_list:
+                    st.session_state.sniff_list.append(row["display_name"])
+                st.rerun()
+
+            b3.link_button("🛒", amazon_search_link(f"{row['brand_pretty']} {row['name_pretty']}"))
+
+            with st.expander("More details"):
+                st.markdown(f"**Top Notes**  \n{top_notes}")
+                st.markdown(f"**Middle Notes**  \n{middle_notes}")
+                st.markdown(f"**Base Notes**  \n{base_notes}")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+# =========================================================
+# PAGE: COLLECTION
+# =========================================================
+elif st.session_state.page == "Collection":
+    st.markdown("### My Collection")
+
+    top1, top2 = st.columns(2)
+    if top1.button("✕ Remove Selected"):
+        with st.spinner("Removing selected fragrances..."):
+            for fragrance_name in st.session_state.collection_selected:
+                remove_collection_item(current_user["user_id"], fragrance_name)
+
+        st.session_state.my_collection = [
+            x for x in st.session_state.my_collection
+            if x not in st.session_state.collection_selected
+        ]
+        st.session_state.collection_selected = []
+        st.rerun()
+
+    if top2.button("Clear Selection", key="clear_collection_selection"):
+        st.session_state.collection_selected = []
+        st.rerun()
+
+    if st.session_state.my_collection:
+        collection_df = df[df["display_name"].isin(st.session_state.my_collection)].copy()
+
+        for family in ["Gourmand", "Floral", "Fresh", "Woody / Warm", "Fruity", "Other"]:
+            family_rows = collection_df[collection_df["family"] == family]
+            if family_rows.empty:
+                continue
+
+            st.markdown(f"#### {family_icon(family)} {family}")
+
+            for _, row in family_rows.sort_values("display_name").iterrows():
+                st.markdown('<div class="collection-chip">', unsafe_allow_html=True)
+
+                selected = st.checkbox(
+                    f"Select {row['display_name']}",
+                    value=row["display_name"] in st.session_state.collection_selected,
+                    key=f"collection_select_{row['display_name']}",
+                    label_visibility="collapsed",
+                )
+
+                if selected and row["display_name"] not in st.session_state.collection_selected:
+                    st.session_state.collection_selected.append(row["display_name"])
+                elif not selected and row["display_name"] in st.session_state.collection_selected:
+                    st.session_state.collection_selected.remove(row["display_name"])
+
+                c1, c2 = st.columns([6, 1])
+                c1.markdown(f"**{row['display_name']}**")
+
+                if c2.button("✕", key=f"remove_{row['display_name']}"):
+                    with st.spinner("Removing from your collection..."):
+                        remove_collection_item(current_user["user_id"], row["display_name"])
+                    st.session_state.my_collection = [
+                        x for x in st.session_state.my_collection if x != row["display_name"]
+                    ]
+                    if row["display_name"] in st.session_state.collection_selected:
+                        st.session_state.collection_selected.remove(row["display_name"])
+                    st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("Your collection is empty.")
+
+# =========================================================
+# PAGE: SAVED
+# =========================================================
+elif st.session_state.page == "Saved":
+    st.markdown("### Saved")
+
+    st.markdown("#### ⭐ Saved Fragrances")
+    if st.session_state.sniff_list:
+        for item in st.session_state.sniff_list:
+            c1, c2 = st.columns([6, 1])
+            c1.markdown(f'<div class="collection-chip"><b>{item}</b></div>', unsafe_allow_html=True)
+            if c2.button("✕", key=f"remove_saved_frag_{item}"):
+                st.session_state.sniff_list = [x for x in st.session_state.sniff_list if x != item]
+                st.rerun()
+    else:
+        st.caption("Nothing saved yet.")
+
+    st.markdown("#### 🧪 Saved Combos")
+    if st.session_state.saved_combos:
+        for combo in st.session_state.saved_combos:
+            c1, c2 = st.columns([6, 1])
+            c1.markdown(f'<div class="collection-chip"><b>{combo}</b></div>', unsafe_allow_html=True)
+            if c2.button("✕", key=f"remove_saved_combo_{combo}"):
+                remove_saved_combo(current_user["user_id"], combo)
+                st.session_state.saved_combos = [x for x in st.session_state.saved_combos if x != combo]
+                st.rerun()
+    else:
+        st.caption("No saved combos yet.")
+
+# =========================================================
+# PAGE: HELP
+# =========================================================
+elif st.session_state.page == "Help":
+    st.markdown("### Help")
+
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>How SniffLab works</b><br><br>
+        1. Open <b>Browse</b>.<br>
+        2. Add the fragrances you own to <b>My Collection</b>.<br>
+        3. Go back to <b>Home</b>.<br>
+        4. Pick your mood and scent style.<br>
+        5. Tap <b>Sniff</b> to get layering ideas.<br><br>
+
+        <b>What the buttons mean</b><br>
+        ➕ Add to your collection<br>
+        ⭐ Save for later<br>
+        ✕ Remove<br>
+        🛒 Check Amazon<br><br>
+
+        <b>Mixing Style</b><br>
+        Balanced = same brand and different brand ideas<br>
+        Same House = mostly the same brand<br>
+        Cross-House = mostly different brands
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# =========================================================
+# PAGE: SETTINGS
+# =========================================================
+elif st.session_state.page == "Settings":
+    st.markdown("### Settings")
+
+    selected_theme = st.selectbox(
+        "Theme",
+        list(THEMES.keys()),
+        index=list(THEMES.keys()).index(st.session_state.theme_name),
+    )
+    if selected_theme != st.session_state.theme_name:
+        st.session_state.theme_name = selected_theme
+        st.rerun()
+
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>Theme</b><br><br>
+        Change the colors used in the app here.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Google Sheets Connection Test")
+    st.caption("Use this to confirm SniffLab can talk to your private Google Sheet.")
+
+    if st.button("Test Google Sheets Connection"):
+        try:
+            conn = get_gsheets_conn()
+            test_df = run_with_backoff(lambda: conn.read(worksheet="users", ttl=30))
+            count = 0 if test_df is None else len(test_df)
+            st.success(f"Connected successfully. Found {count} row(s) in the users tab.")
+        except Exception as e:
+            st.error(f"Connection failed: {e}")
+
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>What this version saves</b><br><br>
+        Your signed-in user record, your fragrance collection, saved combos, and combo ratings.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
