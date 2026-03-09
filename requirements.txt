@@ -2,3 +2,4 @@ streamlit
 pandas
 numpy
 st-gsheets-connection
+Authlib>=1.3.2

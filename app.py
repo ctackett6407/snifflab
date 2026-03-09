@@ -115,6 +115,92 @@ def get_gsheets_conn():
     return st.connection("gsheets", type=GSheetsConnection)
 
 # =========================================================
+# AUTH + USER HELPERS
+# We use Google login through Streamlit auth.
+# The signed-in user becomes the stable owner of
+# collections, wishlist, combos, and ratings.
+# =========================================================
+@st.cache_data(ttl=0, show_spinner=False)
+def load_users_sheet() -> pd.DataFrame:
+    """Read the users worksheet and normalize its columns."""
+    conn = get_gsheets_conn()
+    df = conn.read(worksheet="users", ttl=0)
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "email", "display_name", "created_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "email", "display_name", "created_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "email", "display_name", "created_at"]].copy()
+
+
+def save_users_sheet(users_df: pd.DataFrame) -> None:
+    """Write the users worksheet back to Google Sheets."""
+    conn = get_gsheets_conn()
+    conn.update(worksheet="users", data=users_df)
+    st.cache_data.clear()
+
+
+def get_logged_in_identity():
+    """
+    Return the currently signed-in user's identity info.
+    Streamlit surfaces user data through st.user.
+    """
+    if not st.user.is_logged_in:
+        return None
+
+    email = str(getattr(st.user, "email", "") or "").strip().lower()
+    name = str(getattr(st.user, "name", "") or "").strip()
+
+    if not email:
+        return None
+
+    if not name:
+        name = email.split("@")[0]
+
+    return {
+        "user_id": email,   # stable enough for now; later can map to UUID if desired
+        "email": email,
+        "display_name": name,
+    }
+
+
+def get_or_create_current_user():
+    """
+    Ensure the logged-in user exists in the users worksheet.
+    Returns a dict with user_id, email, display_name.
+    """
+    identity = get_logged_in_identity()
+    if identity is None:
+        return None
+
+    users_df = load_users_sheet()
+
+    existing = users_df[users_df["user_id"].astype(str).str.lower() == identity["user_id"]]
+    if not existing.empty:
+        row = existing.iloc[0]
+        return {
+            "user_id": str(row["user_id"]),
+            "email": str(row["email"]),
+            "display_name": str(row["display_name"]),
+        }
+
+    new_row = pd.DataFrame([{
+        "user_id": identity["user_id"],
+        "email": identity["email"],
+        "display_name": identity["display_name"],
+        "created_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    users_df = pd.concat([users_df, new_row], ignore_index=True)
+    save_users_sheet(users_df)
+
+    return identity
+# =========================================================
 # STYLING
 # =========================================================
 if theme is not None:
@@ -604,6 +690,39 @@ with st.sidebar:
 st.markdown('<div class="main-title">🧪 SniffLab</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Pick your mood, tap Sniff, get layering ideas.</div>', unsafe_allow_html=True)
 st.markdown('<div class="hint-box">On mobile, tap <b>››</b> in the top-left corner to open the menu.</div>', unsafe_allow_html=True)
+
+# =========================================================
+# LOGIN GATE
+# Users must sign in with Google before we load or save
+# anything tied to their identity.
+# =========================================================
+if not st.user.is_logged_in:
+    st.markdown("### Sign in")
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>Save your collection</b><br><br>
+        Sign in with Google so SniffLab can keep your collection,
+        wishlist, saved combos, and ratings attached to you.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("Log in with Google", type="primary"):
+        st.login()
+
+    st.stop()
+
+# User is logged in from here forward
+current_user = get_or_create_current_user()
+
+top1, top2 = st.columns([4, 1])
+with top1:
+    st.caption(f"Signed in as: {current_user['display_name']}")
+with top2:
+    if st.button("Log out"):
+        st.logout()
 
 if st.session_state.last_added:
     st.toast(f"Added: {st.session_state.last_added}")
