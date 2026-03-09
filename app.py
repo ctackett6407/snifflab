@@ -200,6 +200,105 @@ def get_or_create_current_user():
     save_users_sheet(users_df)
 
     return identity
+
+    # =========================================================
+# COLLECTION STORAGE HELPERS
+# Read/write the logged-in user's fragrance collection
+# from the "collections" worksheet.
+# =========================================================
+@st.cache_data(ttl=0, show_spinner=False)
+def load_collections_sheet() -> pd.DataFrame:
+    """Read the collections worksheet and normalize its columns."""
+    try:
+        conn = get_gsheets_conn()
+        df = conn.read(worksheet="collections", ttl=0)
+    except Exception:
+        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
+
+    if df is None or len(df) == 0:
+        df = pd.DataFrame(columns=["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"])
+    else:
+        df = pd.DataFrame(df).fillna("")
+
+    for col in ["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[["user_id", "fragrance_id", "fragrance_name", "brand", "added_at"]].copy()
+
+
+def save_collections_sheet(collections_df: pd.DataFrame) -> None:
+    """Write the collections worksheet back to Google Sheets."""
+    conn = get_gsheets_conn()
+    conn.update(worksheet="collections", data=collections_df)
+    st.cache_data.clear()
+
+
+def load_user_collection(user_id: str) -> list[str]:
+    """Return this user's saved collection as a list of display names."""
+    collections_df = load_collections_sheet()
+    if collections_df.empty:
+        return []
+
+    user_rows = collections_df[
+        collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()
+    ].copy()
+
+    if user_rows.empty:
+        return []
+
+    # Prefer saved fragrance_name if present
+    items = user_rows["fragrance_name"].astype(str).tolist()
+    return [x for x in items if x.strip()]
+
+
+def add_collection_item(user_id: str, row) -> None:
+    """Add one fragrance to the user's collection in Google Sheets."""
+    collections_df = load_collections_sheet()
+
+    fragrance_id = str(row["id"])
+    fragrance_name = str(row["display_name"])
+    brand = str(row["brand_pretty"])
+
+    already_exists = collections_df[
+        (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+        (collections_df["fragrance_id"].astype(str) == fragrance_id)
+    ]
+
+    if not already_exists.empty:
+        return
+
+    new_row = pd.DataFrame([{
+        "user_id": user_id,
+        "fragrance_id": fragrance_id,
+        "fragrance_name": fragrance_name,
+        "brand": brand,
+        "added_at": pd.Timestamp.utcnow().isoformat(),
+    }])
+
+    collections_df = pd.concat([collections_df, new_row], ignore_index=True)
+    save_collections_sheet(collections_df)
+
+
+def remove_collection_item(user_id: str, fragrance_name: str) -> None:
+    """Remove one fragrance from the user's collection in Google Sheets."""
+    collections_df = load_collections_sheet()
+
+    collections_df = collections_df[
+        ~(
+            (collections_df["user_id"].astype(str).str.lower() == str(user_id).strip().lower()) &
+            (collections_df["fragrance_name"].astype(str) == str(fragrance_name))
+        )
+    ].copy()
+
+    save_collections_sheet(collections_df)
+
+
+def sync_session_collection_from_cloud(user_id: str) -> None:
+    """Load the user's saved collection into session state once per session."""
+    loaded = load_user_collection(user_id)
+    st.session_state.my_collection = loaded
+    
 # =========================================================
 # STYLING
 # =========================================================
@@ -717,6 +816,14 @@ if not st.user.is_logged_in:
 # User is logged in from here forward
 current_user = get_or_create_current_user()
 
+# Load this user's saved collection from Google Sheets
+if "collection_loaded_for_user" not in st.session_state:
+    st.session_state.collection_loaded_for_user = ""
+
+if st.session_state.collection_loaded_for_user != current_user["user_id"]:
+    sync_session_collection_from_cloud(current_user["user_id"])
+    st.session_state.collection_loaded_for_user = current_user["user_id"]
+
 top1, top2 = st.columns([4, 1])
 with top1:
     st.caption(f"Signed in as: {current_user['display_name']}")
@@ -963,10 +1070,14 @@ elif st.session_state.page == "Browse":
     bulk1, bulk2 = st.columns(2)
     if bulk1.button("➕ Add Selected"):
         added_any = False
-        for item in st.session_state.browse_selected:
-            if item not in st.session_state.my_collection:
-                st.session_state.my_collection.append(item)
+        selected_rows = results_df[results_df["display_name"].isin(st.session_state.browse_selected)].copy()
+
+        for _, row in selected_rows.iterrows():
+            add_collection_item(current_user["user_id"], row)
+            if row["display_name"] not in st.session_state.my_collection:
+                st.session_state.my_collection.append(row["display_name"])
                 added_any = True
+
         st.session_state.browse_selected = []
         if added_any:
             st.session_state.last_added = "Selected fragrances"
@@ -1029,6 +1140,7 @@ elif st.session_state.page == "Browse":
             b1, b2, b3 = st.columns(3)
 
             if b1.button("➕", key=f"add_{row['id']}"):
+                add_collection_item(current_user["user_id"], row)
                 if row["display_name"] not in st.session_state.my_collection:
                     st.session_state.my_collection.append(row["display_name"])
                 st.session_state.last_added = row["display_name"]
@@ -1056,6 +1168,9 @@ elif st.session_state.page == "Collection":
 
     top1, top2 = st.columns(2)
     if top1.button("✕ Remove Selected"):
+        for fragrance_name in st.session_state.collection_selected:
+            remove_collection_item(current_user["user_id"], fragrance_name)
+
         st.session_state.my_collection = [
             x for x in st.session_state.my_collection
             if x not in st.session_state.collection_selected
@@ -1095,6 +1210,7 @@ elif st.session_state.page == "Collection":
                 c1, c2 = st.columns([6, 1])
                 c1.markdown(f"**{row['display_name']}**")
                 if c2.button("✕", key=f"remove_{row['display_name']}"):
+                    remove_collection_item(current_user["user_id"], row["display_name"])
                     st.session_state.my_collection = [
                         x for x in st.session_state.my_collection if x != row["display_name"]
                     ]
