@@ -3,6 +3,7 @@ import urllib.parse
 
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 # =========================================================
 # SNIFFLAB
@@ -103,6 +104,15 @@ for key, value in DEFAULTS.items():
         st.session_state[key] = value
 
 theme = THEMES[st.session_state.theme_name]
+
+# =========================================================
+# GOOGLE SHEETS CONNECTION
+# This connects to the private Google Sheet configured in
+# Streamlit secrets under [connections.gsheets].
+# =========================================================
+@st.cache_resource
+def get_gsheets_conn():
+    return st.connection("gsheets", type=GSheetsConnection)
 
 # =========================================================
 # STYLING
@@ -398,7 +408,6 @@ def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
 
     combined = " ".join(list(accords_a | accords_b) + list(notes_a | notes_b))
 
-    # Bridge notes that commonly help layering make sense
     bridge_pairs = [
         (["vanilla", "amber"], 2.5),
         (["coffee", "vanilla"], 2.2),
@@ -426,7 +435,6 @@ def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
     else:
         score += 1.0
 
-    # Soft clash penalties
     risky_pairs = [
         (["marine", "chocolate"], 1.8),
         (["marine", "caramel"], 1.5),
@@ -437,7 +445,6 @@ def combo_score(a, b, vibe, profile, intensity, mixing_style) -> float:
         if all(term in combined for term in needed) and bridge_count < 2:
             score -= penalty
 
-    # Shared middle/base structure often makes layering more plausible
     base_a = set([x.lower() for x in a["base_list"]])
     base_b = set([x.lower() for x in b["base_list"]])
     middle_a = set([x.lower() for x in a["middle_list"]])
@@ -576,10 +583,13 @@ df = load_fragrances()
 with st.sidebar:
     st.header("SniffLab")
 
+    valid_pages = ["Home", "Browse", "Collection", "Saved", "Help", "Settings"]
+    current_page = st.session_state.page if st.session_state.page in valid_pages else "Home"
+
     page = st.radio(
         "Go to",
-        ["Home", "Browse", "Collection", "Saved", "Help", "Settings"],
-        index=["Home", "Browse", "Collection", "Saved", "Help", "Settings"].index(st.session_state.page if st.session_state.page in ["Home", "Browse", "Collection", "Saved", "Help", "Settings"] else "Home"),
+        valid_pages,
+        index=valid_pages.index(current_page),
     )
     if page != st.session_state.page:
         st.session_state.page = page
@@ -697,7 +707,6 @@ if st.session_state.page == "Home":
                             "key": f"{key[0]}|||{key[1]}",
                         })
 
-                # Sort only after all combos are built
                 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
                 if mixing_style == "Balanced":
@@ -1008,7 +1017,6 @@ elif st.session_state.page == "Saved":
 
 # =========================================================
 # PAGE: HELP
-# Very simple, non-technical language
 # =========================================================
 elif st.session_state.page == "Help":
     st.markdown("### Help")
@@ -1040,6 +1048,7 @@ elif st.session_state.page == "Help":
 
 # =========================================================
 # PAGE: SETTINGS
+# Theme controls + Google Sheets connection test
 # =========================================================
 elif st.session_state.page == "Settings":
     st.markdown("### Settings")
@@ -1058,6 +1067,27 @@ elif st.session_state.page == "Settings":
         <div class="hero-box">
         <b>Theme</b><br><br>
         Change the colors used in the app here.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Google Sheets Connection Test")
+    st.caption("Use this to confirm SniffLab can talk to your private Google Sheet before we turn on saving collections.")
+
+    if st.button("Test Google Sheets Connection"):
+        try:
+            conn = get_gsheets_conn()
+            test_df = conn.read(worksheet="users", ttl=0)
+            st.success(f"Connected successfully. Found {len(test_df)} row(s) in the users tab.")
+        except Exception as e:
+            st.error(f"Connection failed: {e}")
+
+    st.markdown(
+        """
+        <div class="hero-box">
+        <b>What happens next</b><br><br>
+        Once this connection test works, the next step will be saving and loading each user's collection so it is not lost on refresh.
         </div>
         """,
         unsafe_allow_html=True,
