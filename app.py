@@ -697,6 +697,7 @@ if st.session_state.page == "Home":
                             "key": f"{key[0]}|||{key[1]}",
                         })
 
+                # Sort only after all combos are built
                 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
                 if mixing_style == "Balanced":
